@@ -67,3 +67,19 @@ hs_err_pid*
 /aeron-archive/*.dat
 /aeron-cluster/*.dat
 /aeron-cluster/recording.log
+
+# RPM build
+/rpmbuild
+# DEB build
+/dpkgbuild
+# Build temporaries
+/RH*
+/FC*
+/UB*
+/DEB*
+
+# Sourcetrail
+/*.srctrlbm
+/*.srctrldb
+/*.srctrlprj
+/compile_commands.json
