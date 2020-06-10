@@ -4,7 +4,7 @@ Release:	99999%{?dist}
 Summary:	A reliable messaging system
 
 License:	ASL 2.0
-URL:		https://github.com/injinj/%{name}
+URL:		https://github.com/real-logic/%{name}
 Source0:	%{name}-%{version}-99999.tar.gz
 BuildRoot:	${_tmppath}
 Prefix:	        /usr
