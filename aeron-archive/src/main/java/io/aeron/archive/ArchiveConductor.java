@@ -1285,6 +1285,7 @@ abstract class ArchiveConductor
             .tags(channelUri)
             .rejoin(channelUri)
             .group(channelUri)
+            .flowControl(channelUri)
             .congestionControl(channelUri)
             .alias(channelUri);
 
