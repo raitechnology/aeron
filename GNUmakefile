@@ -40,7 +40,7 @@ arch_cflags := -fno-omit-frame-pointer
 gcc_wflags  := -Wall -Wpedantic -Wextra -Wno-unused-parameter
 fpicflags   := -fPIC -rdynamic
 soflag      := -shared -rdynamic
-rpath       := -Wl,-rpath,$(pwd)/$(libd)
+rpath1      := -Wl,-rpath,$(pwd)/$(libd)
 
 ifdef DEBUG
 default_cflags := -ggdb
@@ -66,8 +66,7 @@ aeron_defines += -DHAVE_BSDSTDLIB_H -DHAVE_RECVMMSG -DHAVE_SENDMMSG
 aeron_driver_defines = -DHAVE_ARC4RANDOM
 
 INCLUDES    ?= 
-includes    := -Iaeron-client/src/main/c -Iaeron-driver/src/main/c -I/usr/include/hdr $(INCLUDES)
-cppincludes := -Iaeron-client/src/main/cpp $(includes)
+includes    := -Iaeron-client/src/main/c -Iaeron-driver/src/main/c $(INCLUDES)
 DEFINES     ?= $(aeron_defines)
 defines     := $(DEFINES)
 cppdefines  := -DNDEBUG $(defines)
@@ -75,6 +74,8 @@ cpp_lnk     :=
 sock_lib    :=
 math_lib    := -lm
 thread_lib  := -pthread -lrt
+
+have_hdr_submodule  := $(shell if [ -d ./HdrHistogram_c ]; then echo yes; else echo no; fi )
 
 lnk_lib     :=
 dlnk_lib    :=
@@ -85,9 +86,33 @@ malloc_lib  :=
 
 # -luuid
 
+ifeq (yes,$(have_hdr_submodule))
+hdr_lib      := HdrHistogram_c/$(libd)/libhdrhist.a
+hdr_dll      := HdrHistogram_c/$(libd)/libhdrhist.so
+dlnk_hdr_lib += -LHdrHistogram_c/$(libd) -lhdrhist
+dlnk_hdr_dep += $(hdr_dll)
+rpath         = $(rpath1),-rpath,$(pwd)/HdrHistogram_c/$(libd)
+includes     += -IHdrHistogram_c/src
+else
+dlnk_hdr_lib += -lhdrhist
+dlnk_hdr_dep += -lhdrhist
+rpath         = $(rpath1)
+includes     += -I/usr/include/hdrhist
+endif
+
+cppincludes := -Iaeron-client/src/main/cpp $(includes)
+
 # before include, that has srpm target
 .PHONY: everything
 everything: all
+
+ifeq (yes,$(have_hdr_submodule))
+$(hdr_lib) $(hdr_dll):
+	$(MAKE) -C HdrHistogram_c
+.PHONY: clean_hdr
+clean_hdr:
+	$(MAKE) -C HdrHistogram_c clean
+endif
 
 # copr/fedora build (with version env vars)
 # copr uses this to generate a source rpm with the srpm target
@@ -348,10 +373,10 @@ basic_subscriber_objs = $(objd)/$(samples_dir)/basic_subscriber.o \
                         $(objd)/$(samples_dir)/sample_util.o
 $(bind)/basic_subscriber: $(basic_subscriber_objs) $(libd)/libaeron.so
 
-cping_lnk  = -laeron -lhdr_histogram
+cping_lnk  = -laeron $(dlnk_hdr_lib)
 cping_objs = $(objd)/$(samples_dir)/cping.o \
              $(objd)/$(samples_dir)/sample_util.o
-$(bind)/cping: $(cping_objs) $(libd)/libaeron.so
+$(bind)/cping: $(cping_objs) $(libd)/libaeron.so $(dlnk_hdr_dep)
 
 cpong_lnk  = -laeron
 cpong_objs = $(objd)/$(samples_dir)/cpong.o \
@@ -415,13 +440,13 @@ LossStat_lnk  = -laeron_client_shared
 LossStat_objs = $(objd)/$(samplescpp_dir)/LossStat.o
 $(bind)/LossStat: $(LossStat_objs) $(libd)/libaeron_client_shared.so
 
-Ping_lnk = -laeron_client_shared -lhdr_histogram
+Ping_lnk = -laeron_client_shared $(dlnk_hdr_lib)
 Ping_objs = $(objd)/$(samplescpp_dir)/Ping.o
-$(bind)/Ping: $(Ping_objs) $(libd)/libaeron_client_shared.so
+$(bind)/Ping: $(Ping_objs) $(libd)/libaeron_client_shared.so $(dlnk_hdr_dep)
 
-PingPong_lnk  = -laeron_client_shared -lhdr_histogram
+PingPong_lnk  = -laeron_client_shared $(dlnk_hdr_lib)
 PingPong_objs = $(objd)/$(samplescpp_dir)/PingPong.o
-$(bind)/PingPong: $(PingPong_objs) $(libd)/libaeron_client_shared.so
+$(bind)/PingPong: $(PingPong_objs) $(libd)/libaeron_client_shared.so $(dlnk_hdr_dep)
 
 Pong_lnk = -laeron_client_shared
 Pong_objs = $(objd)/$(samplescpp_dir)/Pong.o

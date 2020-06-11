@@ -10,15 +10,11 @@ BuildRoot:	${_tmppath}
 Prefix:	        /usr
 BuildRequires:  gcc-c++
 BuildRequires:  chrpath
-BuildRequires:  java-1.8.0-openjdk-devel
-BuildRequires:  zlib-devel
 BuildRequires:  libbsd-devel
-BuildRequires:  gmock-devel
-BuildRequires:  gtest-devel
-BuildRequires:  HdrHistogram_c-devel
+BuildRequires:  hdrhist
 Requires:       zlib
 Requires:       libbsd
-Requires:       HdrHistogram_c
+Requires:       hdrhist
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 
