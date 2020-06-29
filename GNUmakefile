@@ -600,13 +600,13 @@ $(bind)/%:
 	$(if $(findstring $@, $(cpp_exes)),$(cpplink),$(clink)) $(cflags) $(rpath) -o $@ $($(*)_objs) -L$(libd) $($(*)_lnk) $(cpp_lnk) $(sock_lib) $(math_lib) $(thread_lib) $(malloc_lib) $(dynlink_lib)
 
 $(dependd)/%.d: %.cpp
-	$(cpp) $(arch_cflags) $(cppdefines) $(cppincludes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
+	$(cpp) $(arch_cflags) $(cppflags) $(cppdefines) $(cppincludes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
 
 $(dependd)/%.d: %.c
 	$(cc) $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).o -MF $@
 
 $(dependd)/%.fpic.d: %.cpp
-	$(cpp) $(arch_cflags) $(cppdefines) $(cppincludes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).fpic.o -MF $@
+	$(cpp) $(arch_cflags) $(cppflags) $(cppdefines) $(cppincludes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).fpic.o -MF $@
 
 $(dependd)/%.fpic.d: %.c
 	$(cc) $(arch_cflags) $(defines) $(includes) $($(notdir $*)_includes) $($(notdir $*)_defines) -MM $< -MT $(objd)/$(*).fpic.o -MF $@
