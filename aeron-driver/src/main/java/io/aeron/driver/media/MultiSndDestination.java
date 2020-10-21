@@ -19,6 +19,7 @@ import io.aeron.ChannelUri;
 import io.aeron.CommonContext;
 import io.aeron.driver.DriverConductorProxy;
 import io.aeron.protocol.StatusMessageFlyweight;
+import org.agrona.collections.ArrayUtil;
 import org.agrona.concurrent.CachedNanoClock;
 
 import java.io.IOException;
@@ -26,12 +27,22 @@ import java.net.InetSocketAddress;
 import java.net.PortUnreachableException;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
+import java.util.Arrays;
 
+import static io.aeron.driver.media.SendChannelEndpoint.DESTINATION_TIMEOUT;
 import static io.aeron.driver.media.UdpChannelTransport.sendError;
 
 abstract class MultiSndDestination
 {
     static final Destination[] EMPTY_DESTINATIONS = new Destination[0];
+
+    Destination[] destinations = EMPTY_DESTINATIONS;
+    final CachedNanoClock nanoClock;
+
+    MultiSndDestination(final CachedNanoClock nanoClock)
+    {
+        this.nanoClock = nanoClock;
+    }
 
     abstract int send(DatagramChannel channel, ByteBuffer buffer, SendChannelEndpoint channelEndpoint, int bytesToSend);
 
@@ -86,14 +97,9 @@ abstract class MultiSndDestination
 
 class ManualSndMultiDestination extends MultiSndDestination
 {
-    private final long destinationTimeoutNs;
-    private final CachedNanoClock nanoClock;
-    private Destination[] destinations = EMPTY_DESTINATIONS;
-
-    ManualSndMultiDestination(final CachedNanoClock nanoClock, final long destinationTimeoutNs)
+    ManualSndMultiDestination(final CachedNanoClock nanoClock)
     {
-        this.destinationTimeoutNs = destinationTimeoutNs;
-        this.nanoClock = nanoClock;
+        super(nanoClock);
     }
 
     void onStatusMessage(final StatusMessageFlyweight msg, final InetSocketAddress address)
@@ -142,12 +148,7 @@ class ManualSndMultiDestination extends MultiSndDestination
 
     void addDestination(final ChannelUri channelUri, final InetSocketAddress address)
     {
-        final int length = destinations.length;
-        final Destination[] newElements = new Destination[length + 1];
-
-        System.arraycopy(destinations, 0, newElements, 0, length);
-        newElements[length] = new Destination(nanoClock.nanoTime(), channelUri, address);
-        destinations = newElements;
+        destinations = ArrayUtil.add(destinations, new Destination(nanoClock.nanoTime(), channelUri, address));
     }
 
     void removeDestination(final ChannelUri channelUri, final InetSocketAddress address)
@@ -167,27 +168,13 @@ class ManualSndMultiDestination extends MultiSndDestination
 
         if (found)
         {
-            final Destination[] oldElements = destinations;
-            final int length = oldElements.length;
-            final int newLength = length - 1;
-
-            if (0 == newLength)
+            if (1 == destinations.length)
             {
                 destinations = EMPTY_DESTINATIONS;
             }
             else
             {
-                final Destination[] newElements = new Destination[newLength];
-
-                for (int i = 0, j = 0; i < length; i++)
-                {
-                    if (index != i)
-                    {
-                        newElements[j++] = oldElements[i];
-                    }
-                }
-
-                destinations = newElements;
+                destinations = ArrayUtil.remove(destinations, index);
             }
         }
     }
@@ -197,7 +184,7 @@ class ManualSndMultiDestination extends MultiSndDestination
     {
         for (final Destination destination : destinations)
         {
-            if ((destination.timeOfLastActivityNs + destinationTimeoutNs) - nowNs < 0)
+            if ((destination.timeOfLastActivityNs + DESTINATION_TIMEOUT) - nowNs < 0)
             {
                 final String endpoint = destination.channelUri.get(CommonContext.ENDPOINT_PARAM_NAME);
                 final InetSocketAddress address = destination.address;
@@ -223,14 +210,9 @@ class ManualSndMultiDestination extends MultiSndDestination
 
 class DynamicSndMultiDestination extends MultiSndDestination
 {
-    private final long destinationTimeoutNs;
-    private final CachedNanoClock nanoClock;
-    private Destination[] destinations = EMPTY_DESTINATIONS;
-
-    DynamicSndMultiDestination(final CachedNanoClock nanoClock, final long destinationTimeoutNs)
+    DynamicSndMultiDestination(final CachedNanoClock nanoClock)
     {
-        this.nanoClock = nanoClock;
-        this.destinationTimeoutNs = destinationTimeoutNs;
+        super(nanoClock);
     }
 
     void onStatusMessage(final StatusMessageFlyweight msg, final InetSocketAddress address)
@@ -269,7 +251,7 @@ class DynamicSndMultiDestination extends MultiSndDestination
         for (int lastIndex = destinations.length - 1, i = lastIndex; i >= 0; i--)
         {
             final Destination destination = destinations[i];
-            if ((destination.timeOfLastActivityNs + destinationTimeoutNs) - nowNs < 0)
+            if ((destination.timeOfLastActivityNs + DESTINATION_TIMEOUT) - nowNs < 0)
             {
                 if (i != lastIndex)
                 {
@@ -294,12 +276,7 @@ class DynamicSndMultiDestination extends MultiSndDestination
 
     private void add(final Destination destination)
     {
-        final int length = destinations.length;
-        final Destination[] newElements = new Destination[length + 1];
-
-        System.arraycopy(destinations, 0, newElements, 0, length);
-        newElements[length] = destination;
-        destinations = newElements;
+        destinations = ArrayUtil.add(destinations, destination);
     }
 
     private void truncateDestinations(final int removed)
@@ -313,9 +290,7 @@ class DynamicSndMultiDestination extends MultiSndDestination
         }
         else
         {
-            final Destination[] newElements = new Destination[newLength];
-            System.arraycopy(destinations, 0, newElements, 0, newLength);
-            destinations = newElements;
+            destinations = Arrays.copyOf(destinations, newLength);
         }
     }
 }

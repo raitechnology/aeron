@@ -63,11 +63,21 @@ inline bool is_running()
 void poll_handler(void *clientd, const uint8_t *buffer, size_t length, aeron_header_t *header)
 {
     aeron_subscription_t *subscription = (aeron_subscription_t *)clientd;
+    aeron_subscription_constants_t subscription_constants;
+    aeron_header_values_t header_values;
+
+    if (aeron_subscription_constants(subscription, &subscription_constants) < 0)
+    {
+        fprintf(stderr, "could not get subscription constants: %s\n", aeron_errmsg());
+        return;
+    }
+
+    aeron_header_values(header, &header_values);
 
     printf(
         "Message to stream %" PRId32 " from session %" PRId32 " (%" PRIu32 " bytes) <<%*s>>\n",
-        aeron_subscription_stream_id(subscription),
-        aeron_header_session_id(header),
+        subscription_constants.stream_id,
+        header_values.frame.session_id,
         (uint32_t)length,
         (int)length,
         buffer);
@@ -203,11 +213,11 @@ int main(int argc, char **argv)
     printf("Shutting down...\n");
     status = EXIT_SUCCESS;
 
-    cleanup:
-        aeron_subscription_close(subscription);
-        aeron_close(aeron);
-        aeron_context_close(context);
-        aeron_fragment_assembler_delete(fragment_assembler);
+cleanup:
+    aeron_subscription_close(subscription, NULL, NULL);
+    aeron_close(aeron);
+    aeron_context_close(context);
+    aeron_fragment_assembler_delete(fragment_assembler);
 
     return status;
 }

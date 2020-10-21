@@ -17,21 +17,13 @@
 #ifndef AERON_INT32_TO_PTR_HASH_MAP_H
 #define AERON_INT32_TO_PTR_HASH_MAP_H
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
 #include <errno.h>
 
 #include "util/aeron_platform.h"
 #include "collections/aeron_map.h"
-
-#if defined(AERON_COMPILER_MSVC)
-#include <WinSock2.h>
-#include <windows.h>
-#endif
-
 #include "util/aeron_bitutil.h"
 #include "aeron_alloc.h"
+#include "util/aeron_error.h"
 
 typedef struct aeron_int64_to_ptr_hash_map_stct
 {
@@ -46,10 +38,11 @@ aeron_int64_to_ptr_hash_map_t;
 
 inline size_t aeron_int64_to_ptr_hash_map_hash_key(int64_t key, size_t mask)
 {
-    return ((uint64_t)key * 31u) & mask;
+    return (size_t)(((uint64_t)key * 31u) & mask);
 }
 
-inline int aeron_int64_to_ptr_hash_map_init(aeron_int64_to_ptr_hash_map_t *map, size_t initial_capacity, float load_factor)
+inline int aeron_int64_to_ptr_hash_map_init(
+    aeron_int64_to_ptr_hash_map_t *map, size_t initial_capacity, float load_factor)
 {
     size_t capacity = (size_t)aeron_find_next_power_of_two((int32_t)initial_capacity);
 
@@ -137,10 +130,7 @@ inline int aeron_int64_to_ptr_hash_map_put(aeron_int64_to_ptr_hash_map_t *map, c
 {
     if (NULL == value)
     {
-        errno = EINVAL;
-#if defined(AERON_COMPILER_MSVC)
-        SetLastError(ERROR_BAD_ARGUMENTS);
-#endif
+        aeron_set_errno(EINVAL);
         return -1;
     }
 
@@ -253,7 +243,7 @@ typedef void (*aeron_int64_to_ptr_hash_map_for_each_func_t)(void *clientd, int64
 typedef bool (*aeron_int64_to_ptr_hash_map_predicate_func_t)(void *clientd, int64_t key, void *value);
 
 inline void aeron_int64_to_ptr_hash_map_for_each(
-        aeron_int64_to_ptr_hash_map_t *map, aeron_int64_to_ptr_hash_map_for_each_func_t func, void *clientd)
+    aeron_int64_to_ptr_hash_map_t *map, aeron_int64_to_ptr_hash_map_for_each_func_t func, void *clientd)
 {
     for (size_t i = 0; i < map->capacity; i++)
     {

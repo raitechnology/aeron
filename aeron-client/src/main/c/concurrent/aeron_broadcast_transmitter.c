@@ -20,7 +20,7 @@
 #include "concurrent/aeron_atomic.h"
 #include "util/aeron_error.h"
 
-int aeron_broadcast_transmitter_init(volatile aeron_broadcast_transmitter_t *transmitter, void *buffer, size_t length)
+int aeron_broadcast_transmitter_init(aeron_broadcast_transmitter_t *transmitter, void *buffer, size_t length)
 {
     const size_t capacity = length - AERON_BROADCAST_BUFFER_TRAILER_LENGTH;
     int result = -1;
@@ -43,7 +43,7 @@ int aeron_broadcast_transmitter_init(volatile aeron_broadcast_transmitter_t *tra
 
 inline static void signal_tail_intent(aeron_broadcast_descriptor_t *descriptor, int64_t new_tail)
 {
-    descriptor->tail_intent_counter = new_tail;
+    AERON_PUT_ORDERED(descriptor->tail_intent_counter, new_tail);
     aeron_release();  /* storeFence */
 }
 
@@ -54,10 +54,7 @@ inline static void insert_padding_record(aeron_broadcast_record_descriptor_t *re
 }
 
 int aeron_broadcast_transmitter_transmit(
-    volatile aeron_broadcast_transmitter_t *transmitter,
-    int32_t msg_type_id,
-    const void *msg,
-    size_t length)
+    aeron_broadcast_transmitter_t *transmitter, int32_t msg_type_id, const void *msg, size_t length)
 {
     if (length > transmitter->max_message_length || AERON_BROADCAST_INVALID_MSG_TYPE_ID(msg_type_id))
     {
@@ -94,7 +91,7 @@ int aeron_broadcast_transmitter_transmit(
 
     memcpy(transmitter->buffer + record_offset + AERON_BROADCAST_RECORD_HEADER_LENGTH, msg, length);
 
-    transmitter->descriptor->latest_counter = current_tail;
+    AERON_PUT_ORDERED(transmitter->descriptor->latest_counter, current_tail);
     AERON_PUT_ORDERED(transmitter->descriptor->tail_counter, current_tail + aligned_record_length);
 
     return 0;

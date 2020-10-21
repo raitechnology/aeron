@@ -36,6 +36,7 @@ import org.agrona.DirectBuffer;
 import org.agrona.ExpandableArrayBuffer;
 import org.agrona.collections.LongHashSet;
 import org.agrona.collections.MutableInteger;
+import org.agrona.concurrent.NoOpLock;
 import org.agrona.concurrent.status.AtomicCounter;
 import org.agrona.concurrent.status.CountersReader;
 import org.junit.jupiter.api.AfterEach;
@@ -100,10 +101,27 @@ public class StartFromTruncatedRecordingLogTest
     public void after()
     {
         CloseHelper.closeAll(client, clientMediaDriver);
-        CloseHelper.closeAll(clusteredMediaDrivers);
+
+        for (final ClusteredMediaDriver driver : clusteredMediaDrivers)
+        {
+            if (null != driver)
+            {
+                driver.consensusModule().close();
+            }
+        }
+
         CloseHelper.closeAll(containers);
+        CloseHelper.closeAll(clusteredMediaDrivers);
 
         clientMediaDriver.context().deleteDirectory();
+
+        for (final ClusteredServiceContainer container : containers)
+        {
+            if (null != container)
+            {
+                container.context().deleteDirectory();
+            }
+        }
 
         for (final ClusteredMediaDriver driver : clusteredMediaDrivers)
         {
@@ -112,14 +130,6 @@ public class StartFromTruncatedRecordingLogTest
                 driver.consensusModule().context().deleteDirectory();
                 driver.archive().context().deleteDirectory();
                 driver.mediaDriver().context().deleteDirectory();
-            }
-        }
-
-        for (final ClusteredServiceContainer container : containers)
-        {
-            if (null != container)
-            {
-                container.context().deleteDirectory();
             }
         }
     }
@@ -152,8 +162,8 @@ public class StartFromTruncatedRecordingLogTest
         final Counter electionStateFollowerB = clusteredMediaDrivers[followerMemberIdB]
             .consensusModule().context().electionStateCounter();
 
-        ClusterTests.awaitElectionState(electionStateFollowerA, Election.State.CLOSED);
-        ClusterTests.awaitElectionState(electionStateFollowerB, Election.State.CLOSED);
+        ClusterTests.awaitElectionState(electionStateFollowerA, ElectionState.CLOSED);
+        ClusterTests.awaitElectionState(electionStateFollowerB, ElectionState.CLOSED);
 
         takeSnapshot(leaderMemberId);
         awaitSnapshotCount(1);
@@ -312,6 +322,7 @@ public class StartFromTruncatedRecordingLogTest
         final String aeronDirName = aeronDirName(index);
 
         final AeronArchive.Context archiveCtx = new AeronArchive.Context()
+            .lock(NoOpLock.INSTANCE)
             .controlRequestChannel(memberSpecificPort(ARCHIVE_CONTROL_REQUEST_CHANNEL, index))
             .controlRequestStreamId(100 + index)
             .controlResponseChannel(memberSpecificPort(ARCHIVE_CONTROL_RESPONSE_CHANNEL, index))
@@ -481,7 +492,7 @@ public class StartFromTruncatedRecordingLogTest
             final Cluster.Role role = Cluster.Role.get(driver.consensusModule().context().clusterNodeRoleCounter());
             final Counter electionStateCounter = driver.consensusModule().context().electionStateCounter();
 
-            if (Cluster.Role.LEADER == role && Election.State.CLOSED.code() == electionStateCounter.get())
+            if (Cluster.Role.LEADER == role && ElectionState.CLOSED.code() == electionStateCounter.get())
             {
                 leaderMemberId = driver.consensusModule().context().clusterMemberId();
             }

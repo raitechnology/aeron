@@ -23,10 +23,9 @@ buildscript {
 plugins {
     id 'java-library'
     id 'idea'
-    id 'io.freefair.javadoc-links' version '5.1.0' apply false
-    id 'com.github.johnrengelman.shadow' version '5.2.0' apply false
-    id 'biz.aQute.bnd.builder' version '5.1.0' apply false
-    id "com.github.ben-manes.versions" version "0.28.0"
+    id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
+    id 'biz.aQute.bnd.builder' version '5.1.2' apply false
+    id "com.github.ben-manes.versions" version "0.33.0"
 }
 
 defaultTasks 'clean', 'build'
@@ -34,14 +33,14 @@ defaultTasks 'clean', 'build'
 def aeronGroup = 'io.aeron'
 def aeronVersion = file('version.txt').text.trim()
 
-def agronaVersion = '1.5.1'
-def agronaVersionRange = '[1.5,1.6[' // allow any patch release of 1.5.x
-def sbeVersion = '1.18.2'
-def checkstyleVersion = '8.28'
+def agronaVersion = '1.8.0'
+def agronaVersionRange = '[1.8,1.9[' // allow any patch release of 1.8.x
+def sbeVersion = '1.20.3'
+def checkstyleVersion = '8.36.2'
 def hamcrestVersion = '2.2'
-def junitVersion = '5.6.2'
-def mockitoVersion = '3.3.3'
-def byteBuddyVersion = '1.10.11'
+def junitVersion = '5.7.0'
+def mockitoVersion = '3.5.15'
+def byteBuddyVersion = '1.10.17'
 def hdrHistogramVersion = '2.1.12'
 
 ext {
@@ -125,20 +124,33 @@ allprojects {
         mavenLocal()
         mavenCentral()
     }
+
+    configurations.all {
+        resolutionStrategy {
+            failOnVersionConflict()
+        }
+    }
 }
 
 subprojects {
     apply plugin: 'java-library'
     apply plugin: 'checkstyle'
     apply plugin: 'eclipse'
-    apply plugin: 'io.freefair.javadoc-links'
 
     dependencies {
         testImplementation "org.hamcrest:hamcrest:${hamcrestVersion}"
-        testImplementation "org.mockito:mockito-junit-jupiter:${mockitoVersion}"
-        testImplementation "org.mockito:mockito-inline:${mockitoVersion}"
+        testImplementation ("org.mockito:mockito-junit-jupiter:${mockitoVersion}") {
+            exclude group: 'org.junit.jupiter'
+            exclude group: 'net.bytebuddy'
+        }
+        testImplementation ("org.mockito:mockito-inline:${mockitoVersion}") {
+            exclude group: 'org.junit.jupiter'
+            exclude group: 'net.bytebuddy'
+        }
         testImplementation "org.junit.jupiter:junit-jupiter-params:${junitVersion}"
         testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:${junitVersion}"
+        testImplementation "net.bytebuddy:byte-buddy-agent:${byteBuddyVersion}"
+        testRuntimeOnly "net.bytebuddy:byte-buddy:${byteBuddyVersion}"
     }
 
     group = aeronGroup
@@ -186,33 +198,37 @@ subprojects {
         }
 
         systemProperties(
-            'aeron.shared.idle.strategy': 'org.agrona.concurrent.YieldingIdleStrategy',
-            'aeron.conductor.idle.strategy': 'org.agrona.concurrent.YieldingIdleStrategy',
-            'aeron.sender.idle.strategy': 'org.agrona.concurrent.YieldingIdleStrategy',
-            'aeron.receiver.idle.strategy': 'org.agrona.concurrent.YieldingIdleStrategy',
+            'aeron.shared.idle.strategy': 'yield',
+            'aeron.conductor.idle.strategy': 'yield',
+            'aeron.sender.idle.strategy': 'yield',
+            'aeron.receiver.idle.strategy': 'yield',
             'aeron.use.windows.high.res.timer': 'true',
-            'aeron.timer.interval': '10000000',
+            'aeron.timer.interval': '100ms',
             'aeron.dir.delete.on.start': 'true',
             'aeron.term.buffer.sparse.file': 'true',
             'aeron.perform.storage.checks': 'false')
-
-        reports.html.enabled = false // Disable individual test reports
     }
 
     task slowTest(type: Test) {
         maxParallelForks = 1
-
         useJUnitPlatform {
             includeTags 'slow'
         }
     }
 
     javadoc {
+        failOnError false
         title = '<h1>Aeron Message Transport</h1>'
         options.bottom = '<i>Copyright &#169; 2014-2020 Real Logic Limited. All Rights Reserved.</i>'
         options.encoding = 'UTF-8'
         options.docEncoding = 'UTF-8'
         options.charSet = 'UTF-8'
+        options.links("https://www.javadoc.io/doc/org.agrona/agrona/${agronaVersion}/")
+        if (JavaVersion.current().isJava11Compatible()) {
+            options.links("https://docs.oracle.com/en/java/javase/${JavaVersion.current().majorVersion}/docs/api/")
+        } else {
+            options.links("https://docs.oracle.com/javase/${JavaVersion.current().majorVersion}/docs/api/")
+        }
         if (JavaVersion.current().isJava10Compatible()) {
             options.addBooleanOption 'html5', true
         }
@@ -329,6 +345,10 @@ project(':aeron-driver') {
         withJavadocJar()
     }
 
+    javadoc {
+        source += project(':aeron-client').sourceSets.main.allJava
+    }
+
     publishing {
         publications {
             aeronDriver(MavenPublication) {
@@ -373,15 +393,14 @@ project(':aeron-archive') {
 
     def generatedDir = file("${buildDir}/generated-src")
     sourceSets {
-        generated.java.srcDir generatedDir
+        generated {
+            java.srcDir generatedDir
+            compileClasspath += configurations.codecGeneration
+        }
     }
 
     compileJava.dependsOn 'compileGeneratedJava'
-
-    compileGeneratedJava {
-        dependsOn 'generateCodecs'
-        classpath += configurations.codecGeneration
-    }
+    compileGeneratedJava.dependsOn 'generateCodecs'
 
     task generateCodecs(type: JavaExec) {
         def codecsFile = 'src/main/resources/archive/aeron-archive-codecs.xml'
@@ -441,6 +460,8 @@ project(':aeron-archive') {
 
     javadoc {
         source += sourceSets.generated.allJava
+        source += project(':aeron-client').sourceSets.main.allJava
+        source += project(':aeron-driver').sourceSets.main.allJava
     }
 
     java {
@@ -490,15 +511,14 @@ project(':aeron-cluster') {
 
     def generatedDir = file("${buildDir}/generated-src")
     sourceSets {
-        generated.java.srcDir generatedDir
+        generated {
+            java.srcDir generatedDir
+            compileClasspath += configurations.codecGeneration
+        }
     }
 
     compileJava.dependsOn 'compileGeneratedJava'
-
-    compileGeneratedJava {
-        dependsOn 'generateCodecs'
-        classpath += configurations.codecGeneration
-    }
+    compileGeneratedJava.dependsOn 'generateCodecs'
 
     task generateCodecs(type: JavaExec) {
         def codecsFile = 'src/main/resources/cluster/aeron-cluster-codecs.xml'
@@ -545,6 +565,10 @@ project(':aeron-cluster') {
 
     javadoc {
         source += sourceSets.generated.allJava
+        source += project(':aeron-client').sourceSets.main.allJava
+        source += project(':aeron-driver').sourceSets.main.allJava
+        source += project(':aeron-archive').sourceSets.main.allJava
+        source += project(':aeron-archive').sourceSets.generated.allJava
     }
 
     java {
@@ -597,7 +621,7 @@ project(':aeron-agent') {
 
         manifest.attributes(
             'Implementation-Title': 'Aeron',
-            'Implementation-Version': "${aeronVersion}",
+            'Implementation-Version': aeronVersion,
             'Implementation-Vendor': 'Real Logic Limited',
             "Premain-Class": "io.aeron.agent.EventLogAgent",
             "Agent-Class": "io.aeron.agent.EventLogAgent",
@@ -692,6 +716,13 @@ project(':aeron-samples') {
         }
     }
 
+    javadoc {
+        source += project(':aeron-client').sourceSets.main.allJava
+        source += project(':aeron-driver').sourceSets.main.allJava
+        source += project(':aeron-archive').sourceSets.main.allJava
+        source += project(':aeron-archive').sourceSets.generated.allJava
+    }
+
     signing {
         sign publishing.publications.aeronSamples
     }
@@ -708,6 +739,7 @@ project(':aeron-samples') {
         dependsOn(removeWikiDirectory, asciidoctorGithub)
         apiKey = project.hasProperty('aeron.ci.apiKey') ? project.property('aeron.ci.apiKey') : ''
         source = asciidoctorGithub.target
+        remoteName = project.hasProperty('aeron.ci.remoteName') ? project.property('aeron.ci.remoteName') : 'origin'
     }
 }
 
@@ -723,14 +755,21 @@ project(':aeron-system-tests') {
         systemProperties('java.net.preferIPv4Stack': 'true')
         systemProperties('aeron.test.system.aeronmd.path': System.getProperty('aeron.test.system.aeronmd.path'))
     }
+
+    javadoc.enabled = false
 }
 
 project(':aeron-test-support') {
     dependencies {
         api project(':aeron-client')
         api "org.junit.jupiter:junit-jupiter-api:${junitVersion}"
-        implementation "org.mockito:mockito-junit-jupiter:${mockitoVersion}"
+        implementation ("org.mockito:mockito-junit-jupiter:${mockitoVersion}") {
+            exclude group: 'org.junit.jupiter'
+            exclude group: 'net.bytebuddy'
+        }
     }
+
+    javadoc.enabled = false
 }
 
 project(':aeron-all') {
@@ -754,7 +793,7 @@ project(':aeron-all') {
         archiveClassifier.set('')
         manifest.attributes(
             'Implementation-Title': 'Aeron',
-            'Implementation-Version': "${aeronVersion}",
+            'Implementation-Version': aeronVersion,
             'Implementation-Vendor': 'Real Logic Limited',
             'Automatic-Module-Name': 'io.aeron.all')
     }
@@ -814,23 +853,23 @@ project(':aeron-all') {
 }
 
 task testReport(type: TestReport) {
-    destinationDir = file("$buildDir/reports/allTests")
+    destinationDir = file("${buildDir}/reports/allTests")
     // Include the results from the `test` task in all sub-projects
     reportOn subprojects*.test
 }
 
-task copyCrashLogs(type: Copy) {
+task copyTestLogs(type: Copy) {
     from '.'
     include '**/build/test-output/**'
-    include '**/hs_err*.log'
+    include '**/*.log'
     include 'LICENSE'
     exclude 'build'
-    into 'build/crash_logs'
+    into 'build/test_logs'
 
     includeEmptyDirs = false
 }
 
 wrapper {
-    gradleVersion = '6.5'
+    gradleVersion = '6.6.1'
     distributionType = 'ALL'
 }

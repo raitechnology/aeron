@@ -16,6 +16,7 @@
 package io.aeron.cluster.service;
 
 import io.aeron.Aeron;
+import io.aeron.AeronCounters;
 import io.aeron.Counter;
 import io.aeron.cluster.client.ClusterException;
 import org.agrona.*;
@@ -60,7 +61,7 @@ public class RecoveryState
     /**
      * Type id of a recovery state counter.
      */
-    public static final int RECOVERY_STATE_TYPE_ID = 204;
+    public static final int RECOVERY_STATE_TYPE_ID = AeronCounters.CLUSTER_RECOVERY_STATE_TYPE_ID;
 
     /**
      * Human readable name for the counter.
@@ -139,13 +140,17 @@ public class RecoveryState
 
         for (int i = 0, size = counters.maxCounterId(); i < size; i++)
         {
-            if (counters.getCounterState(i) == RECORD_ALLOCATED &&
-                counters.getCounterTypeId(i) == RECOVERY_STATE_TYPE_ID)
+            final int counterState = counters.getCounterState(i);
+            if (counterState == RECORD_ALLOCATED && counters.getCounterTypeId(i) == RECOVERY_STATE_TYPE_ID)
             {
                 if (buffer.getInt(CountersReader.metaDataOffset(i) + KEY_OFFSET + CLUSTER_ID_OFFSET) == clusterId)
                 {
                     return i;
                 }
+            }
+            else if (RECORD_UNUSED == counterState)
+            {
+                break;
             }
         }
 

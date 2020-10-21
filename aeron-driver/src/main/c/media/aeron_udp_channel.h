@@ -41,6 +41,7 @@ typedef struct aeron_udp_channel_stct
     bool is_manual_control_mode;
     bool is_dynamic_control_mode;
     bool is_multicast;
+    aeron_uri_ats_status_t ats_status;
 }
 aeron_udp_channel_t;
 
@@ -48,7 +49,8 @@ int aeron_udp_channel_parse(
     size_t uri_length,
     const char *uri,
     aeron_name_resolver_t *resolver,
-    aeron_udp_channel_t **channel);
+    aeron_udp_channel_t **channel,
+    bool is_destination);
 
 void aeron_udp_channel_delete(const aeron_udp_channel_t *channel);
 

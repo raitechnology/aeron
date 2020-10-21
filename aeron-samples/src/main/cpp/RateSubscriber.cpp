@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <csignal>
 #include <thread>
+#include <cinttypes>
 
 #include "util/CommandOptionParser.h"
 #include "concurrent/BusySpinIdleStrategy.h"
@@ -31,7 +32,7 @@ using namespace aeron;
 
 std::atomic<bool> running(true);
 
-void sigIntHandler(int param)
+void sigIntHandler(int)
 {
     running = false;
 }
@@ -44,7 +45,7 @@ static const char optFrags = 'f';
 
 struct Settings
 {
-    std::string dirPrefix = "";
+    std::string dirPrefix;
     std::string channel = samples::configuration::DEFAULT_CHANNEL;
     std::int32_t streamId = samples::configuration::DEFAULT_STREAM_ID;
     int fragmentCountLimit = samples::configuration::DEFAULT_FRAGMENT_COUNT_LIMIT;
@@ -69,10 +70,10 @@ Settings parseCmdLine(CommandOptionParser &cp, int argc, char **argv)
     return s;
 }
 
-void printRate(double messagesPerSec, double bytesPerSec, long totalFragments, long totalBytes)
+void printRate(double messagesPerSec, double bytesPerSec, std::int64_t totalFragments, std::int64_t totalBytes)
 {
     std::printf(
-        "%.04g msgs/sec, %.04g bytes/sec, totals %ld messages %ld MB payloads\n",
+        "%.04g msgs/sec, %.04g bytes/sec, totals %" PRId64 " messages %" PRId64 " MB payloads\n",
         messagesPerSec, bytesPerSec, totalFragments, totalBytes / (1024 * 1024));
 }
 

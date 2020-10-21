@@ -62,24 +62,63 @@ public class DataHeaderFlyweight extends HeaderFlyweight
      */
     public static final short BEGIN_END_AND_EOS_FLAGS = BEGIN_FLAG | END_FLAG | EOS_FLAG;
 
+    /**
+     * Default value to be placed in the reserved value field.
+     */
     public static final long DEFAULT_RESERVE_VALUE = 0L;
 
+    /**
+     * Offset in the frame at which the term-offset field begins.
+     */
     public static final int TERM_OFFSET_FIELD_OFFSET = 8;
+
+    /**
+     * Offset in the frame at which the session-id field begins.
+     */
     public static final int SESSION_ID_FIELD_OFFSET = 12;
+
+    /**
+     * Offset in the frame at which the stream-id field begins.
+     */
     public static final int STREAM_ID_FIELD_OFFSET = 16;
+
+    /**
+     * Offset in the frame at which the term-id field begins.
+     */
     public static final int TERM_ID_FIELD_OFFSET = 20;
+
+    /**
+     * Offset in the frame at which the reserved value field begins.
+     */
     public static final int RESERVED_VALUE_OFFSET = 24;
+
+    /**
+     * Offset in the frame at which the data payload begins.
+     */
     public static final int DATA_OFFSET = HEADER_LENGTH;
 
+    /**
+     * Default constructor which can later be use to wrap a frame.
+     */
     public DataHeaderFlyweight()
     {
     }
 
+    /**
+     * Construct the flyweight over a frame.
+     *
+     * @param buffer containing the frame.
+     */
     public DataHeaderFlyweight(final UnsafeBuffer buffer)
     {
         super(buffer);
     }
 
+    /**
+     * Construct the flyweight over a frame.
+     *
+     * @param buffer containing the frame.
+     */
     public DataHeaderFlyweight(final ByteBuffer buffer)
     {
         super(buffer);
@@ -88,7 +127,7 @@ public class DataHeaderFlyweight extends HeaderFlyweight
     /**
      * Get the fragment length field from the header.
      *
-     * @param termBuffer  container the header.
+     * @param termBuffer  containing the header.
      * @param frameOffset in the buffer where the header starts.
      * @return the fragment length field from the header.
      */
@@ -133,7 +172,7 @@ public class DataHeaderFlyweight extends HeaderFlyweight
     /**
      * Get the session-id field from the header.
      *
-     * @param termBuffer  container the header.
+     * @param termBuffer  containing the header.
      * @param frameOffset in the buffer where the header starts.
      * @return the session-id field from the header.
      */
@@ -168,7 +207,7 @@ public class DataHeaderFlyweight extends HeaderFlyweight
     /**
      * Get the stream-id field from the header.
      *
-     * @param termBuffer  container the header.
+     * @param termBuffer  containing the header.
      * @param frameOffset in the buffer where the header starts.
      * @return the stream-id field from the header.
      */
@@ -178,7 +217,7 @@ public class DataHeaderFlyweight extends HeaderFlyweight
     }
 
     /**
-     * Set the session-id field in the header.
+     * Set the stream-id field in the header.
      *
      * @param streamId value to set.
      * @return this for a fluent API.
@@ -203,7 +242,7 @@ public class DataHeaderFlyweight extends HeaderFlyweight
     /**
      * Get the term-id field from the header.
      *
-     * @param termBuffer  container the header.
+     * @param termBuffer  containing the header.
      * @param frameOffset in the buffer where the header starts.
      * @return the term-id field from the header.
      */
@@ -238,7 +277,7 @@ public class DataHeaderFlyweight extends HeaderFlyweight
     /**
      * Get the term-offset field from the header.
      *
-     * @param termBuffer  container the header.
+     * @param termBuffer  containing the header.
      * @param frameOffset in the buffer where the header starts.
      * @return the term-offset field from the header.
      */
@@ -273,7 +312,7 @@ public class DataHeaderFlyweight extends HeaderFlyweight
     /**
      * Get the reserved value field from the header.
      *
-     * @param termBuffer  container the header.
+     * @param termBuffer  containing the header.
      * @param frameOffset in the buffer where the header starts.
      * @return the reserved value field from the header.
      */

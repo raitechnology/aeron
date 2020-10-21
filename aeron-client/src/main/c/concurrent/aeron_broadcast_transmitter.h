@@ -17,9 +17,6 @@
 #ifndef AERON_BROADCAST_TRANSMITTER_H
 #define AERON_BROADCAST_TRANSMITTER_H
 
-#include <stdint.h>
-#include <stddef.h>
-
 #include "util/aeron_bitutil.h"
 #include "aeron_broadcast_descriptor.h"
 
@@ -32,12 +29,9 @@ typedef struct aeron_broadcast_transmitter_stct
 }
 aeron_broadcast_transmitter_t;
 
-int aeron_broadcast_transmitter_init(volatile aeron_broadcast_transmitter_t *transmitter, void *buffer, size_t length);
+int aeron_broadcast_transmitter_init(aeron_broadcast_transmitter_t *transmitter, void *buffer, size_t length);
 
 int aeron_broadcast_transmitter_transmit(
-    volatile aeron_broadcast_transmitter_t *transmitter,
-    int32_t msg_type_id,
-    const void *msg,
-    size_t length);
+    aeron_broadcast_transmitter_t *transmitter, int32_t msg_type_id, const void *msg, size_t length);
 
 #endif //AERON_BROADCAST_TRANSMITTER_H

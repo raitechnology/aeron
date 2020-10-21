@@ -16,14 +16,15 @@
 
 #include "util/aeron_error.h"
 #include "aeron_driver_receiver.h"
-#include "media/aeron_receive_destination.h"
 #include "aeron_position.h"
+#include "media/aeron_receive_destination.h"
 
 int aeron_receive_destination_create(
     aeron_receive_destination_t **destination,
     aeron_udp_channel_t *channel,
     aeron_driver_context_t *context,
     aeron_counters_manager_t *counters_manager,
+    int64_t registration_id,
     int32_t channel_status_counter_id)
 {
     aeron_receive_destination_t *_destination = NULL;
@@ -45,12 +46,13 @@ int aeron_receive_destination_create(
         &channel->remote_data,
         &channel->local_data,
         channel->interface_index,
-        (0 != channel->multicast_ttl) ? channel->multicast_ttl : context->multicast_ttl,
+        0 != channel->multicast_ttl ? channel->multicast_ttl : context->multicast_ttl,
         context->socket_rcvbuf,
         context->socket_sndbuf,
         context,
         AERON_UDP_CHANNEL_TRANSPORT_AFFINITY_RECEIVER) < 0)
     {
+        aeron_set_err(aeron_errcode(), "%s: uri=%s", aeron_errmsg(), channel->original_uri);
         aeron_receive_destination_delete(_destination, counters_manager);
         return -1;
     }
@@ -64,7 +66,11 @@ int aeron_receive_destination_create(
     }
 
     _destination->local_sockaddr_indicator.counter_id = aeron_counter_local_sockaddr_indicator_allocate(
-        counters_manager, AERON_COUNTER_RCV_LOCAL_SOCKADDR_NAME, channel_status_counter_id, local_sockaddr);
+        counters_manager,
+        AERON_COUNTER_RCV_LOCAL_SOCKADDR_NAME,
+        registration_id,
+        channel_status_counter_id,
+        local_sockaddr);
     _destination->local_sockaddr_indicator.value_addr = aeron_counters_manager_addr(
         counters_manager, _destination->local_sockaddr_indicator.counter_id);
 
@@ -103,8 +109,7 @@ int aeron_receive_destination_create(
 }
 
 void aeron_receive_destination_delete(
-    aeron_receive_destination_t *destination,
-    aeron_counters_manager_t *counters_manager)
+    aeron_receive_destination_t *destination, aeron_counters_manager_t *counters_manager)
 {
     if (NULL != counters_manager && AERON_NULL_COUNTER_ID != destination->local_sockaddr_indicator.counter_id)
     {

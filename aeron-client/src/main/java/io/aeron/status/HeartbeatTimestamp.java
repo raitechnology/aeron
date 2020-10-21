@@ -15,6 +15,7 @@
  */
 package io.aeron.status;
 
+import io.aeron.AeronCounters;
 import org.agrona.BitUtil;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
@@ -32,9 +33,9 @@ import static org.agrona.concurrent.status.CountersReader.*;
 public class HeartbeatTimestamp
 {
     /**
-     * Type id of an Aeron client heartbeat.
+     * Type id of a heartbeat counter.
      */
-    public static final int CLIENT_HEARTBEAT_TYPE_ID = 11;
+    public static final int HEARTBEAT_TYPE_ID = AeronCounters.DRIVER_HEARTBEAT_TYPE_ID;
 
     /**
      * Offset in the key meta data for the registration id of the counter.
@@ -115,15 +116,18 @@ public class HeartbeatTimestamp
 
         for (int i = 0, size = countersReader.maxCounterId(); i < size; i++)
         {
-            if (countersReader.getCounterState(i) == RECORD_ALLOCATED &&
-                countersReader.getCounterTypeId(i) == counterTypeId)
+            final int counterState = countersReader.getCounterState(i);
+            if (counterState == RECORD_ALLOCATED)
             {
-                final int recordOffset = CountersReader.metaDataOffset(i);
-
-                if (buffer.getLong(recordOffset + KEY_OFFSET + REGISTRATION_ID_OFFSET) == registrationId)
+                if (countersReader.getCounterTypeId(i) == counterTypeId &&
+                    buffer.getLong(metaDataOffset(i) + KEY_OFFSET + REGISTRATION_ID_OFFSET) == registrationId)
                 {
                     return i;
                 }
+            }
+            else if (RECORD_UNUSED == counterState)
+            {
+                break;
             }
         }
 

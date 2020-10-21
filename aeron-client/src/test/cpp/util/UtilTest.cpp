@@ -15,14 +15,13 @@
  */
 
 #include <cstdint>
-
-#include <util/ScopeUtils.h>
-#include <util/StringUtil.h>
-#include <util/BitUtil.h>
-#include "TestUtils.h"
-
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+
+#include "util/ScopeUtils.h"
+#include "util/StringUtil.h"
+#include "util/BitUtil.h"
+#include "TestUtils.h"
 
 using namespace aeron::util;
 
@@ -65,14 +64,14 @@ TEST(utilTests, stringUtilParseTest)
     ASSERT_THROW(parse<int>("84473.3443"), ParseException);
 }
 
-TEST(utilTests, stringUtiltoStringTest)
+TEST(utilTests, stringUtilToStringTest)
 {
     ASSERT_EQ(toString(100), "100");
     ASSERT_EQ(toString(1.25), "1.25");
     ASSERT_EQ(toString("hello"), "hello");
 }
 
-TEST(utilTests, stringUtilstrPrintfTest)
+TEST(utilTests, stringUtilStrPrintfTest)
 {
     std::string val = strPrintf("%s %s", "hello", "world");
     ASSERT_EQ(val, "hello world");

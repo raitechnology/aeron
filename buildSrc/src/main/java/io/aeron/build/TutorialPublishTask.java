@@ -32,6 +32,7 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 
+import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.joining;
 import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_KEY_URL;
 import static org.eclipse.jgit.lib.ConfigConstants.CONFIG_REMOTE_SECTION;
@@ -43,6 +44,9 @@ public class TutorialPublishTask extends DefaultTask
 
     @InputDirectory
     public File source;
+
+    @Input
+    public String remoteName;
 
     @TaskAction
     public void publish() throws Exception
@@ -90,7 +94,10 @@ public class TutorialPublishTask extends DefaultTask
             .setGitDir(new File(getProject().getRootDir(), ".git"))
             .build();
 
-        final String origin = baseGitRepo.getConfig().getString(CONFIG_REMOTE_SECTION, "origin", CONFIG_KEY_URL);
+        final String origin = baseGitRepo.getConfig().getString(
+            CONFIG_REMOTE_SECTION,
+            requireNonNull(remoteName, "'remoteName' must be set, use origin as a default"),
+            CONFIG_KEY_URL);
 
         if (null == origin)
         {

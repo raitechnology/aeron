@@ -217,7 +217,7 @@ int main(int argc, char **argv)
     }
 
     start_timestamp_ns = aeron_nano_clock();
-    for (uint64_t i = 0; i < messages && is_running(); i++)
+    for (uint64_t i = 0; i < messages && is_running();)
     {
         int64_t result = aeron_exclusive_publication_try_claim(publication, message_length, &buffer_claim);
 
@@ -242,6 +242,7 @@ int main(int argc, char **argv)
             }
 
             message_sent_count++;
+            i++;
         }
     }
     duration_ns = aeron_nano_clock() - start_timestamp_ns;
@@ -270,10 +271,10 @@ int main(int argc, char **argv)
 
     status = EXIT_SUCCESS;
 
-    cleanup:
-        aeron_exclusive_publication_close(publication);
-        aeron_close(aeron);
-        aeron_context_close(context);
+cleanup:
+    aeron_exclusive_publication_close(publication, NULL, NULL);
+    aeron_close(aeron);
+    aeron_context_close(context);
 
     return status;
 }

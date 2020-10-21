@@ -18,8 +18,8 @@
 
 #include <gmock/gmock.h>
 
-#include <concurrent/errors/ErrorLogReader.h>
-#include <concurrent/errors/DistinctErrorLog.h>
+#include "concurrent/errors/ErrorLogReader.h"
+#include "concurrent/errors/DistinctErrorLog.h"
 
 using namespace aeron::concurrent::errors;
 using namespace aeron::concurrent;
@@ -60,13 +60,13 @@ public:
         m_buffer.fill(0);
     }
 
-    virtual void SetUp()
+    void SetUp() override
     {
         m_buffer.fill(0);
     }
 
 protected:
-    AERON_DECL_ALIGNED(buffer_t m_buffer, 16);
+    AERON_DECL_ALIGNED(buffer_t m_buffer, 16) = {};
     AtomicBuffer m_mockBuffer;
     ErrorHandler m_error;
     ErrorLogReader::error_consumer_t m_consumer;

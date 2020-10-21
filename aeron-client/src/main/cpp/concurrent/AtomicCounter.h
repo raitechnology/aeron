@@ -16,20 +16,16 @@
 #ifndef AERON_CONCURRENT_ATOMIC_COUNTER_H
 #define AERON_CONCURRENT_ATOMIC_COUNTER_H
 
-#include <cstdint>
 #include <memory>
 
-#include <util/Index.h>
-#include "AtomicBuffer.h"
-#include "CountersManager.h"
+#include "concurrent/CountersManager.h"
 
 namespace aeron { namespace concurrent {
 
 class AtomicCounter
 {
 public:
-
-    AtomicCounter(const AtomicBuffer& buffer, std::int32_t counterId, std::shared_ptr<CountersManager> countersManager) :
+    AtomicCounter(const AtomicBuffer &buffer, std::int32_t counterId, std::shared_ptr<CountersManager> countersManager) :
         m_buffer(buffer),
         m_counterId(counterId),
         m_countersManager(std::move(countersManager)),
@@ -38,7 +34,7 @@ public:
         m_buffer.putInt64(m_offset, 0);
     }
 
-    AtomicCounter(const AtomicBuffer& buffer, std::int32_t counterId) :
+    AtomicCounter(const AtomicBuffer &buffer, std::int32_t counterId) :
         m_buffer(buffer),
         m_counterId(counterId),
         m_countersManager(nullptr),
@@ -92,17 +88,13 @@ public:
     inline std::int64_t getAndAddOrdered(std::int64_t increment)
     {
         std::int64_t currentValue = m_buffer.getInt64(m_offset);
-
         m_buffer.putInt64Ordered(m_offset, currentValue + increment);
         return currentValue;
     }
 
     inline std::int64_t getAndSet(std::int64_t value)
     {
-        std::int64_t currentValue = m_buffer.getInt64(m_offset);
-
-        m_buffer.putInt64Atomic(m_offset, value);
-        return currentValue;
+        return m_buffer.getAndSetInt64(m_offset, value);
     }
 
     inline bool compareAndSet(std::int64_t expectedValue, std::int64_t updateValue)

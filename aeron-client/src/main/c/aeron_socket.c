@@ -53,7 +53,7 @@ void aeron_close_socket(aeron_socket_t socket)
     close(socket);
 }
 
-#elif defined(AERON_COMPILER_MSVC) && defined(AERON_CPU_X64)
+#elif defined(AERON_COMPILER_MSVC)
 
 #if _WIN32_WINNT < 0x0600
 #error Unsupported windows version
@@ -120,7 +120,7 @@ int getifaddrs(struct ifaddrs **ifap)
         }
     }
 
-    if (dwRet != ERROR_SUCCESS)
+    if (ERROR_SUCCESS != dwRet)
     {
         if (pAdapterAddresses)
         {
@@ -217,6 +217,9 @@ int getifaddrs(struct ifaddrs **ifap)
                             0xff : (ULONG)((0xffU << (8 - i)) & 0xffU);
                     }
                     break;
+
+                default:
+                    break;
             }
         }
     }
@@ -233,26 +236,22 @@ int getifaddrs(struct ifaddrs **ifap)
 
 void freeifaddrs(struct ifaddrs *current)
 {
-    if (current == NULL)
+    if (NULL != current)
     {
-        return;
-    }
-
-    while (1)
-    {
-        struct ifaddrs *next = current->ifa_next;
-        free(current);
-        current = next;
-
-        if (current == NULL)
+        while (1)
         {
-            break;
+            struct ifaddrs *next = current->ifa_next;
+            free(current);
+            current = next;
+
+            if (NULL == current)
+            {
+                break;
+            }
         }
     }
 }
 
-#include <Mswsock.h>
-#include <winsock2.h>
 #include <ws2ipdef.h>
 #include <iphlpapi.h>
 #include <stdio.h>
@@ -335,7 +334,7 @@ void aeron_close_socket(aeron_socket_t socket)
 #endif
 
 /* aeron_getsockopt and aeron_setsockopt ensure a consistent signature between platforms
- * (MSVC uses char* instead of void* for optval, which causes warnings)
+ * (MSVC uses char * instead of void * for optval, which causes warnings)
  */
 int aeron_getsockopt(aeron_socket_t fd, int level, int optname, void *optval, socklen_t *optlen)
 {

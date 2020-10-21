@@ -45,10 +45,8 @@ class FlowControlTest : public testing::Test
 public:
     FlowControlTest()
     {
-        aeron_default_name_resolver_supplier(&m_resolver, NULL, NULL);
+        aeron_default_name_resolver_supplier(&m_resolver, nullptr, nullptr);
     };
-
-    virtual ~FlowControlTest() = default;
 
     int64_t apply_status_message(
         aeron_flow_control_strategy_t *strategy,
@@ -60,9 +58,8 @@ public:
         int64_t snd_lmt = 0)
     {
         uint8_t msg[1024];
-        aeron_status_message_header_t *sm = (aeron_status_message_header_t *)msg;
-        aeron_status_message_optional_header_t *sm_optional =
-            (aeron_status_message_optional_header_t *) (msg + sizeof(aeron_status_message_header_t));
+        auto *sm = (aeron_status_message_header_t *)msg;
+        auto *sm_optional = (aeron_status_message_optional_header_t *)(msg + sizeof(aeron_status_message_header_t));
 
         sm->frame_header.frame_length = send_gtag ?
             sizeof(aeron_status_message_header_t) + sizeof(aeron_status_message_optional_header_t) :
@@ -84,8 +81,8 @@ public:
         int32_t asf_value)
     {
         uint8_t msg[1024];
-        aeron_status_message_header_t *sm = (aeron_status_message_header_t *)msg;
-        int32_t *asf = (int32_t *)(msg + sizeof(aeron_status_message_header_t));
+        auto *sm = (aeron_status_message_header_t *)msg;
+        auto *asf = (int32_t *)(msg + sizeof(aeron_status_message_header_t));
 
         sm->frame_header.frame_length = sizeof(aeron_status_message_header_t) + sizeof(int32_t);
         sm->consumption_term_id = 0;
@@ -100,28 +97,28 @@ public:
 
     void initialise_channel(const char *uri)
     {
-        aeron_udp_channel_parse(strlen(uri), uri, &m_resolver, &m_channel);
+        aeron_udp_channel_parse(strlen(uri), uri, &m_resolver, &m_channel, false);
         m_channels.push_back(m_channel);
     }
 
-    struct sockaddr_storage address{};
-    aeron_udp_channel_t *m_channel{};
-    aeron_driver_context_t *context{};
-    aeron_distinct_error_log_t error_log{};
-    buffer_t buffer{};
-    aeron_name_resolver_t m_resolver;
-    aeron_flow_control_strategy_t *m_strategy;
+    struct sockaddr_storage address = {};
+    aeron_udp_channel_t *m_channel = nullptr;
+    aeron_driver_context_t *context = nullptr;
+    aeron_distinct_error_log_t error_log = {};
+    buffer_t buffer = {};
+    aeron_name_resolver_t m_resolver= {};
+    aeron_flow_control_strategy_t *m_strategy = nullptr;
     std::vector<aeron_udp_channel_t *> m_channels;
 
 protected:
-    virtual void TearDown()
+    void TearDown() override
     {
         for (auto channel : m_channels)
         {
             aeron_udp_channel_delete(channel);
         }
 
-        if (NULL != m_strategy)
+        if (nullptr != m_strategy)
         {
             m_strategy->fini(m_strategy);
         }
@@ -130,11 +127,11 @@ protected:
         aeron_distinct_error_log_close(&error_log);
     }
 
-    virtual void SetUp()
+    void SetUp() override
     {
-        m_channel = NULL;
-        m_strategy = NULL;
-        aeron_distinct_error_log_init(&error_log, buffer.data(), buffer.size(), now, linger, NULL);
+        m_channel = nullptr;
+        m_strategy = nullptr;
+        aeron_distinct_error_log_init(&error_log, buffer.data(), buffer.size(), now, linger, nullptr);
         aeron_driver_context_init(&context);
         context->error_log = &error_log;
         context->multicast_flow_control_supplier_func = aeron_min_flow_control_strategy_supplier;
@@ -171,7 +168,7 @@ TEST_F(MinFlowControlTest, shouldFallbackToMinStrategy)
         &m_strategy, context, m_channel,
         1001, 1001, 0, 64 * 1024));
 
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 1, 1000, 1));
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 2, 2000, 1));
@@ -187,7 +184,7 @@ TEST_F(MinFlowControlTest, shouldUseMinStrategy)
         m_channel,
         1001, 1001, 0, 64 * 1024));
 
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 1, 1000, 1));
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 2, 2000, 1));
@@ -203,7 +200,7 @@ TEST_F(FlowControlTest, shouldUseMinStrategyAndIgnoreGroupParams)
         m_channel,
         1001, 1001, 0, 64 * 1024));
 
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 1, 1000, 1));
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 2, 2000, 1));
@@ -221,7 +218,7 @@ TEST_F(MinFlowControlTest, shouldTimeoutWithMinStrategy)
         &m_strategy, context,
         m_channel,
         1001, 1001, 0, 64 * 1024));
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
     ASSERT_EQ(WINDOW_LENGTH + position_recv_1, apply_status_message(m_strategy, 1, position_recv_1, 0, 100 * 1000000));
     ASSERT_EQ(WINDOW_LENGTH + position_recv_1, apply_status_message(m_strategy, 2, position_recv_2, 0, 200 * 1000000));
@@ -242,7 +239,7 @@ TEST_F(MaxFlowControlTest, shouldFallbackToMaxStrategy)
         &m_strategy, context, m_channel,
         1001, 1001, 0, 64 * 1024));
 
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 1, 1000, 1));
     ASSERT_EQ(WINDOW_LENGTH + 2000, apply_status_message(m_strategy, 2, 2000, 1));
@@ -257,7 +254,7 @@ TEST_F(MaxFlowControlTest, shouldUseMaxStrategy)
         &m_strategy, context, m_channel,
         1001, 1001, 0, 64 * 1024));
 
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 1, 1000, 1));
     ASSERT_EQ(WINDOW_LENGTH + 2000, apply_status_message(m_strategy, 2, 2000, 1));
@@ -277,7 +274,7 @@ TEST_F(TaggedFlowControlTest, shouldUseFallbackToTaggedStrategy)
         &m_strategy, context, m_channel,
         1001, 1001, 0, 64 * 1024));
 
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 1, 1000, 1));
     ASSERT_EQ(WINDOW_LENGTH + 2000, apply_status_message(m_strategy, 2, 2000, 1));
@@ -292,7 +289,7 @@ TEST_F(TaggedFlowControlTest, shouldUseTaggedStrategy)
         &m_strategy, context, m_channel,
         1001, 1001, 0, 64 * 1024));
 
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 1, 1000, 123));
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 2, 2000, 123));
@@ -316,7 +313,7 @@ TEST_F(TaggedFlowControlTest, shouldUseTaggedStrategyWith8ByteTag)
         &m_strategy, context, m_channel,
         1001, 1001, 0, 64 * 1024));
 
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 1, 1000, 3000000000));
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 2, 2000, 3000000000));
@@ -331,7 +328,7 @@ TEST_F(TaggedFlowControlTest, shouldUseTaggedStrategyWithOldAsfValue)
         &m_strategy, context, m_channel,
         1001, 1001, 0, 64 * 1024));
 
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
     size_t initial_observations = aeron_distinct_error_log_num_observations(&error_log);
 
@@ -348,12 +345,12 @@ TEST_F(TaggedFlowControlTest, shouldUsePositionAndWindowFromStatusMessageWhenRec
         &m_strategy, context, m_channel,
         1001, 1001, 0, 64 * 1024));
 
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
     ASSERT_EQ(WINDOW_LENGTH + 1000, apply_status_message(m_strategy, 1, 1000, 0));
 }
 
-TEST_F(TaggedFlowControlTest, shouldAlwayUsePositionFromReceiversIfPresent)
+TEST_F(TaggedFlowControlTest, shouldAlwaysUsePositionFromReceiversIfPresent)
 {
     initialise_channel("aeron:udp?endpoint=224.20.30.39:24326|interface=localhost|fc=tagged,g:123");
 
@@ -377,15 +374,19 @@ TEST_F(TaggedFlowControlTest, shouldTimeout)
     ASSERT_EQ(0, aeron_default_multicast_flow_control_strategy_supplier(
         &m_strategy, context, m_channel,
         1001, 1001, 0, 64 * 1024));
-    ASSERT_FALSE(NULL == m_strategy);
+    ASSERT_FALSE(nullptr == m_strategy);
 
-    ASSERT_EQ(position_recv_1 + WINDOW_LENGTH, apply_status_message(m_strategy, 1, position_recv_1, 123, 100 * 1000000));
-    ASSERT_EQ(position_recv_1 + WINDOW_LENGTH, apply_status_message(m_strategy, 2, position_recv_2, 123, 200 * 1000000));
+    ASSERT_EQ(position_recv_1 + WINDOW_LENGTH,
+              apply_status_message(m_strategy, 1, position_recv_1, 123, 100 * 1000000));
+    ASSERT_EQ(position_recv_1 + WINDOW_LENGTH,
+              apply_status_message(m_strategy, 2, position_recv_2, 123, 200 * 1000000));
 
     ASSERT_EQ(
-        position_recv_1 + WINDOW_LENGTH, m_strategy->on_idle(m_strategy->state, 599 * 1000000, sender_position, 0, false));
+        position_recv_1 + WINDOW_LENGTH,
+        m_strategy->on_idle(m_strategy->state, 599 * 1000000, sender_position, 0, false));
     ASSERT_EQ(
-        position_recv_2 + WINDOW_LENGTH, m_strategy->on_idle(m_strategy->state, 601 * 1000000, sender_position, 0, false));
+        position_recv_2 + WINDOW_LENGTH,
+        m_strategy->on_idle(m_strategy->state, 601 * 1000000, sender_position, 0, false));
     ASSERT_EQ(sender_position, m_strategy->on_idle(m_strategy->state, 701 * 1000000, sender_position, 0, false));
 }
 
@@ -420,7 +421,7 @@ TEST_F(TaggedFlowControlTest, shouldAlwaysHaveRequiredReceiverByDefault)
         &m_strategy, context, m_channel,
         1001, 1001, 0, 64 * 1024));
 
-    ASSERT_TRUE(NULL != m_strategy);
+    ASSERT_TRUE(nullptr != m_strategy);
 
     aeron_tagged_flow_control_strategy_to_string(m_strategy, buffer, sizeof(buffer));
     ASSERT_TRUE(m_strategy->has_required_receivers(m_strategy)) << buffer;
@@ -495,7 +496,8 @@ TEST_F(MinFlowControlTest, shouldUseSenderLimitWhenRequiredReceiverNotMet)
     ASSERT_EQ(sender_limit, apply_status_message(m_strategy, 2, term_offset, -1, 0, false, sender_limit));
     ASSERT_EQ(sender_limit, m_strategy->on_idle(m_strategy->state, 0, sender_limit, 0, false));
 
-    ASSERT_EQ(term_offset + WINDOW_LENGTH, apply_status_message(m_strategy, 3, term_offset, -1, 0, false, sender_limit));
+    ASSERT_EQ(term_offset + WINDOW_LENGTH,
+              apply_status_message(m_strategy, 3, term_offset, -1, 0, false, sender_limit));
     ASSERT_EQ(term_offset + WINDOW_LENGTH, m_strategy->on_idle(m_strategy->state, 0, sender_limit, 0, false));
 }
 
@@ -517,14 +519,16 @@ TEST_F(TaggedFlowControlTest, shouldUseSenderLimitWhenRequiredReceiversNotMet)
     ASSERT_EQ(sender_limit, apply_status_message(m_strategy, 2, term_offset, gtag, 0, true, sender_limit));
     ASSERT_EQ(sender_limit, m_strategy->on_idle(m_strategy->state, 0, sender_limit, 0, false));
 
-    ASSERT_EQ(term_offset + WINDOW_LENGTH, apply_status_message(m_strategy, 3, term_offset, gtag, 0, true, sender_limit));
+    ASSERT_EQ(
+        term_offset + WINDOW_LENGTH,
+        apply_status_message(m_strategy, 3, term_offset, gtag, 0, true, sender_limit));
     ASSERT_EQ(term_offset + WINDOW_LENGTH, m_strategy->on_idle(m_strategy->state, 0, sender_limit, 0, false));
 }
 
 TEST_P(ParameterisedSuccessfulOptionsParsingTest, shouldBeValid)
 {
-    const char* fc_options = std::get<0>(GetParam());
-    const char* strategy = std::get<1>(GetParam());
+    const char *fc_options = std::get<0>(GetParam());
+    const char *strategy = std::get<1>(GetParam());
 
     aeron_flow_control_tagged_options_t options;
     ASSERT_EQ(1, aeron_flow_control_parse_tagged_options(strlen(fc_options), fc_options, &options));
@@ -555,10 +559,10 @@ INSTANTIATE_TEST_SUITE_P(
 TEST_F(FlowControlTest, shouldParseNull)
 {
     aeron_flow_control_tagged_options_t options;
-    ASSERT_EQ(0, aeron_flow_control_parse_tagged_options(0, NULL, &options));
+    ASSERT_EQ(0, aeron_flow_control_parse_tagged_options(0, nullptr, &options));
 
     ASSERT_EQ(0U, options.strategy_name_length);
-    ASSERT_EQ(NULL, options.strategy_name);
+    ASSERT_EQ(nullptr, options.strategy_name);
     ASSERT_EQ(false, options.timeout_ns.is_present);
     ASSERT_EQ(0U, options.timeout_ns.value);
     ASSERT_EQ(false, options.group_tag.is_present);
@@ -567,7 +571,6 @@ TEST_F(FlowControlTest, shouldParseNull)
 
 TEST_F(FlowControlTest, shouldFallWithInvalidStrategyName)
 {
-
     initialise_channel("aeron:udp?endpoint=224.20.30.39:24326|interface=localhost|fc=minute");
     ASSERT_EQ(-1, aeron_default_multicast_flow_control_strategy_supplier(
         &m_strategy, context, m_channel,
@@ -586,21 +589,21 @@ TEST_F(FlowControlTest, shouldFallWithInvalidStrategyName)
 
 TEST_P(ParameterisedFailingOptionsParsingTest, shouldBeInvalid)
 {
-    const char* fc_options = std::get<0>(GetParam());
+    const char *fc_options = std::get<0>(GetParam());
 
     aeron_flow_control_tagged_options_t options;
-    ASSERT_EQ(
-        std::get<1>(GetParam()), aeron_flow_control_parse_tagged_options(strlen(fc_options), fc_options, &options));
+    ASSERT_EQ(-1, aeron_flow_control_parse_tagged_options(strlen(fc_options), fc_options, &options));
+    ASSERT_EQ(std::get<1>(GetParam()), aeron_errcode());
 }
 
 INSTANTIATE_TEST_SUITE_P(
     ParsingTests,
     ParameterisedFailingOptionsParsingTest,
     testing::Values(
-        std::make_tuple("min,t1a0s", -EINVAL),
-        std::make_tuple("min,g:1f2", -EINVAL),
-        std::make_tuple("min,t:10s,g:1b2", -EINVAL),
-        std::make_tuple("min,o:-1", -EINVAL),
-        std::make_tuple("tagged,g:1/", -EINVAL),
-        std::make_tuple("tagged,g:", -EINVAL),
-        std::make_tuple("tagged,g:/", -EINVAL)));
+        std::make_tuple("min,t1a0s", EINVAL),
+        std::make_tuple("min,g:1f2", EINVAL),
+        std::make_tuple("min,t:10s,g:1b2", EINVAL),
+        std::make_tuple("min,o:-1", EINVAL),
+        std::make_tuple("tagged,g:1/", EINVAL),
+        std::make_tuple("tagged,g:", EINVAL),
+        std::make_tuple("tagged,g:/", EINVAL)));

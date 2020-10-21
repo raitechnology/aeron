@@ -16,12 +16,12 @@
 package io.aeron.cluster;
 
 import io.aeron.Aeron;
+import io.aeron.AeronCounters;
 import io.aeron.CommonContext;
 import io.aeron.Counter;
 import io.aeron.archive.Archive;
 import io.aeron.archive.client.AeronArchive;
 import io.aeron.cluster.client.AeronCluster;
-import io.aeron.cluster.client.ClusterClock;
 import io.aeron.cluster.client.ClusterException;
 import io.aeron.cluster.codecs.mark.ClusterComponentType;
 import io.aeron.cluster.service.*;
@@ -53,8 +53,7 @@ import static org.agrona.SystemUtil.*;
  * Component which resides on each node and is responsible for coordinating consensus within a cluster in concert
  * with the lifecycle of clustered services.
  */
-@SuppressWarnings("unused")
-public class ConsensusModule implements AutoCloseable
+public final class ConsensusModule implements AutoCloseable
 {
     /**
      * Possible states for the {@link ConsensusModule}.
@@ -97,31 +96,25 @@ public class ConsensusModule implements AutoCloseable
          */
         CLOSED(6);
 
-        static final State[] STATES;
-
-        static
-        {
-            final State[] states = values();
-            STATES = new State[states.length];
-            for (final State state : states)
-            {
-                final int code = state.code();
-                if (null != STATES[code])
-                {
-                    throw new ClusterException("code already in use: " + code);
-                }
-
-                STATES[code] = state;
-            }
-        }
+        static final State[] STATES = values();
 
         private final int code;
 
         State(final int code)
         {
+            if (code != ordinal())
+            {
+                throw new IllegalArgumentException(name() + " - code must equal ordinal value: code=" + code);
+            }
+
             this.code = code;
         }
 
+        /**
+         * Code to be stored in an {@link AtomicCounter} for the enum value.
+         *
+         * @return code to be stored in an {@link AtomicCounter} for the enum value.
+         */
         public final int code()
         {
             return code;
@@ -137,7 +130,7 @@ public class ConsensusModule implements AutoCloseable
         public static State get(final AtomicCounter counter)
         {
             final long code = counter.get();
-            return get((int)code);
+            return get(code);
         }
 
         /**
@@ -147,14 +140,14 @@ public class ConsensusModule implements AutoCloseable
          * @return the {@link State} corresponding to the provided code.
          * @throws ClusterException if the code does not correspond to a valid State.
          */
-        public static State get(final int code)
+        public static State get(final long code)
         {
             if (code < 0 || code > (STATES.length - 1))
             {
                 throw new ClusterException("invalid state counter code: " + code);
             }
 
-            return STATES[code];
+            return STATES[(int)code];
         }
 
         /**
@@ -169,7 +162,7 @@ public class ConsensusModule implements AutoCloseable
             final int counterId = ClusterCounters.find(counters, CONSENSUS_MODULE_STATE_TYPE_ID, clusterId);
             if (Aeron.NULL_VALUE != counterId)
             {
-                return State.get((int)counters.getCounterValue(counterId));
+                return State.get(counters.getCounterValue(counterId));
             }
 
             return null;
@@ -440,7 +433,7 @@ public class ConsensusModule implements AutoCloseable
         /**
          * Counter type id for the consensus module state.
          */
-        public static final int CONSENSUS_MODULE_STATE_TYPE_ID = 200;
+        public static final int CONSENSUS_MODULE_STATE_TYPE_ID = AeronCounters.CLUSTER_CONSENSUS_MODULE_STATE_TYPE_ID;
 
         /**
          * Counter type id for the cluster node role.
@@ -467,27 +460,30 @@ public class ConsensusModule implements AutoCloseable
         /**
          * Counter type id for count of snapshots taken.
          */
-        public static final int SNAPSHOT_COUNTER_TYPE_ID = 205;
+        public static final int SNAPSHOT_COUNTER_TYPE_ID = AeronCounters.CLUSTER_SNAPSHOT_COUNTER_TYPE_ID;
 
         /**
          * Type id for election state counter.
          */
-        public static final int ELECTION_STATE_TYPE_ID = Election.ELECTION_STATE_TYPE_ID;
+        public static final int ELECTION_STATE_TYPE_ID = AeronCounters.CLUSTER_ELECTION_STATE_TYPE_ID;
 
         /**
          * Counter type id for the consensus module error count.
          */
-        public static final int CONSENSUS_MODULE_ERROR_COUNT_TYPE_ID = 212;
+        public static final int CONSENSUS_MODULE_ERROR_COUNT_TYPE_ID =
+            AeronCounters.CLUSTER_CONSENSUS_MODULE_ERROR_COUNT_TYPE_ID;
 
         /**
          * Counter type id for the number of cluster clients which have been timed out.
          */
-        public static final int CLUSTER_CLIENT_TIMEOUT_COUNT_TYPE_ID = 213;
+        public static final int CLUSTER_CLIENT_TIMEOUT_COUNT_TYPE_ID =
+            AeronCounters.CLUSTER_CLIENT_TIMEOUT_COUNT_TYPE_ID;
 
         /**
          * Counter type id for the number of invalid requests which the cluster has received.
          */
-        public static final int CLUSTER_INVALID_REQUEST_COUNT_TYPE_ID = 214;
+        public static final int CLUSTER_INVALID_REQUEST_COUNT_TYPE_ID =
+            AeronCounters.CLUSTER_INVALID_REQUEST_COUNT_TYPE_ID;
 
         /**
          * The number of services in this cluster instance.
@@ -1225,7 +1221,7 @@ public class ConsensusModule implements AutoCloseable
             if (null == commitPosition)
             {
                 commitPosition = ClusterCounters.allocate(
-                    aeron, "cluster-commit-pos:", COMMIT_POSITION_TYPE_ID, clusterId);
+                    aeron, "Cluster commit-pos:", COMMIT_POSITION_TYPE_ID, clusterId);
             }
 
             if (null == controlToggle)
@@ -1277,7 +1273,7 @@ public class ConsensusModule implements AutoCloseable
 
             if (null == terminationHook)
             {
-                terminationHook = () -> shutdownSignalBarrier.signal();
+                terminationHook = () -> shutdownSignalBarrier.signalAll();
             }
 
             if (null == authenticatorSupplier)
@@ -2486,7 +2482,7 @@ public class ConsensusModule implements AutoCloseable
          * Get the counter for the current state of an election
          *
          * @return the counter for the current state of an election.
-         * @see Election.State
+         * @see ElectionState
          */
         public Counter electionStateCounter()
         {
@@ -2498,7 +2494,7 @@ public class ConsensusModule implements AutoCloseable
          *
          * @param electionStateCounter for the current state of an election.
          * @return this for a fluent API.
-         * @see Election.State
+         * @see ElectionState
          */
         public Context electionStateCounter(final Counter electionStateCounter)
         {

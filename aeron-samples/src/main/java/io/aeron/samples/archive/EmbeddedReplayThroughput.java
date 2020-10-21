@@ -42,7 +42,6 @@ import static org.agrona.BitUtil.CACHE_LINE_LENGTH;
 import static org.agrona.BufferUtil.allocateDirectAligned;
 import static org.agrona.SystemUtil.loadPropertiesFiles;
 
-@SuppressWarnings("unused")
 abstract class EmbeddedReplayThroughputLhsPadding
 {
     byte p000, p001, p002, p003, p004, p005, p006, p007, p008, p009, p010, p011, p012, p013, p014, p015;
@@ -53,7 +52,7 @@ abstract class EmbeddedReplayThroughputLhsPadding
 
 abstract class EmbeddedReplayThroughputValue extends EmbeddedReplayThroughputLhsPadding
 {
-    protected long messageCount;
+    long messageCount;
 }
 
 /**
@@ -115,7 +114,7 @@ public class EmbeddedReplayThroughput extends EmbeddedReplayThroughputValue impl
         }
     }
 
-    public EmbeddedReplayThroughput()
+    EmbeddedReplayThroughput()
     {
         final String archiveDirName = Archive.Configuration.archiveDirName();
         final File archiveDir = ARCHIVE_DIR_DEFAULT.equals(archiveDirName) ?

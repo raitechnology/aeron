@@ -24,6 +24,7 @@ import io.aeron.driver.media.*;
 import io.aeron.driver.reports.LossReport;
 import io.aeron.driver.status.SystemCounters;
 import io.aeron.exceptions.ConcurrentConcludeException;
+import io.aeron.logbuffer.BufferClaim;
 import io.aeron.logbuffer.LogBufferDescriptor;
 import org.agrona.*;
 import org.agrona.concurrent.*;
@@ -313,12 +314,9 @@ public final class MediaDriver implements AutoCloseable
      */
     public void close()
     {
-        if (ctx.useWindowsHighResTimer() && SystemUtil.isWindows())
+        if (ctx.useWindowsHighResTimer() && SystemUtil.isWindows() && !wasHighResTimerEnabled)
         {
-            if (!wasHighResTimerEnabled)
-            {
-                HighResolutionTimer.disable();
-            }
+            HighResolutionTimer.disable();
         }
 
         CloseHelper.closeAll(
@@ -584,6 +582,7 @@ public final class MediaDriver implements AutoCloseable
                 LogBufferDescriptor.checkTermLength(ipcTermBufferLength);
                 validateInitialWindowLength(initialWindowLength, mtuLength);
                 validateUnblockTimeout(publicationUnblockTimeoutNs, clientLivenessTimeoutNs, timerIntervalNs);
+                validateUntetheredTimeouts(untetheredWindowLimitTimeoutNs, untetheredRestingTimeoutNs, timerIntervalNs);
 
                 cncByteBuffer = mapNewFile(
                     cncFile(),
@@ -611,6 +610,7 @@ public final class MediaDriver implements AutoCloseable
                 concludeDependantProperties();
                 concludeIdleStrategies();
 
+                toDriverCommands.nextCorrelationId();
                 toDriverCommands.consumerHeartbeatTime(epochClock.time());
                 CncFileDescriptor.signalCncReady(cncMetaDataBuffer);
             }
@@ -1160,9 +1160,9 @@ public final class MediaDriver implements AutoCloseable
         }
 
         /**
-         * The delay for lingering after a retransmission.
+         * How long to linger after delay on a NAK before responding to another NAK.
          *
-         * @return delay before retransmitting after a NAK.
+         * @return how long to linger after delay on a NAK before responding to another NAK.
          * @see Configuration#RETRANSMIT_UNICAST_LINGER_PROP_NAME
          */
         public long retransmitUnicastLingerNs()
@@ -1171,9 +1171,9 @@ public final class MediaDriver implements AutoCloseable
         }
 
         /**
-         * The delay for lingering after a retransmission.
+         * How long to linger after delay on a NAK before responding to another NAK.
          *
-         * @param retransmitUnicastLingerNs delay before retransmitting after a NAK.
+         * @param retransmitUnicastLingerNs how long to linger after delay on a NAK before responding to another NAK.
          * @return this for a fluent API.
          * @see Configuration#RETRANSMIT_UNICAST_LINGER_PROP_NAME
          */
@@ -1331,6 +1331,10 @@ public final class MediaDriver implements AutoCloseable
         /**
          * Timeout in nanoseconds after which a publication will be unblocked if a offer is partially complete to allow
          * other publishers to make progress.
+         * <p>
+         * A publication can become blocked if the client crashes while publishing or if
+         * {@link io.aeron.Publication#tryClaim(int, BufferClaim)} is used without following up by calling
+         * {@link BufferClaim#commit()} or {@link BufferClaim#abort()}.
          *
          * @return timeout in nanoseconds after which a publication will be unblocked.
          * @see Configuration#PUBLICATION_UNBLOCK_TIMEOUT_PROP_NAME
@@ -1343,6 +1347,10 @@ public final class MediaDriver implements AutoCloseable
         /**
          * Timeout in nanoseconds after which a publication will be unblocked if a offer is partially complete to allow
          * other publishers to make progress.
+         * <p>
+         * A publication can become blocked if the client crashes while publishing or if
+         * {@link io.aeron.Publication#tryClaim(int, BufferClaim)} is used without following up by calling
+         * {@link BufferClaim#commit()} or {@link BufferClaim#abort()}.
          *
          * @param timeoutNs in nanoseconds after which a publication will be unblocked.
          * @return this for a fluent API.
@@ -1382,6 +1390,8 @@ public final class MediaDriver implements AutoCloseable
 
         /**
          * Does a spy subscription simulate a connection to a network publication.
+         * <p>
+         * If true then this will override the min group size of the min and tagged flow control strategies.
          *
          * @return true if a spy subscription should simulate a connection to a network publication.
          * @see Configuration#SPIES_SIMULATE_CONNECTION_PROP_NAME
@@ -1393,6 +1403,8 @@ public final class MediaDriver implements AutoCloseable
 
         /**
          * Does a spy subscription simulate a connection to a network publication.
+         * <p>
+         * If true then this will override the min group size of the min and tagged flow control strategies.
          *
          * @param spiesSimulateConnection true if a spy subscription simulates a connection to a network publication.
          * @return this for a fluent API.
@@ -2506,13 +2518,25 @@ public final class MediaDriver implements AutoCloseable
         }
 
         /**
-         * {@link LossReport}for identifying loss issues on specific connections.
+         * {@link LossReport} for identifying loss issues on specific connections.
          *
          * @return {@link LossReport} for identifying loss issues on specific connections.
          */
         LossReport lossReport()
         {
             return lossReport;
+        }
+
+        /**
+         * {@link LossReport} for identifying loss issues on specific connections.
+         *
+         * @param lossReport for identifying loss issues on specific connections.
+         * @return this for a fluent API.
+         */
+        Context lossReport(final LossReport lossReport)
+        {
+            this.lossReport = lossReport;
+            return this;
         }
 
         /**
@@ -3066,7 +3090,7 @@ public final class MediaDriver implements AutoCloseable
             return this;
         }
 
-        @SuppressWarnings("MethodLength")
+        @SuppressWarnings({ "MethodLength", "deprecation" })
         void concludeNullProperties()
         {
             if (null == tempBuffer)
@@ -3147,7 +3171,7 @@ public final class MediaDriver implements AutoCloseable
 
             if (null == receiveChannelEndpointThreadLocals)
             {
-                receiveChannelEndpointThreadLocals = new ReceiveChannelEndpointThreadLocals(this);
+                receiveChannelEndpointThreadLocals = new ReceiveChannelEndpointThreadLocals();
             }
 
             if (null == congestionControlSupplier)
@@ -3238,8 +3262,11 @@ public final class MediaDriver implements AutoCloseable
                     aeronDirectoryName(), filePageSize, performStorageChecks, lowStorageWarningThreshold, errorHandler);
             }
 
-            lossReportBuffer = mapLossReport(aeronDirectoryName(), align(lossReportBufferLength, filePageSize));
-            lossReport = new LossReport(new UnsafeBuffer(lossReportBuffer));
+            if (null == lossReport)
+            {
+                lossReportBuffer = mapLossReport(aeronDirectoryName(), align(lossReportBufferLength, filePageSize));
+                lossReport = new LossReport(new UnsafeBuffer(lossReportBuffer));
+            }
         }
 
         private void concludeCounters()
@@ -3256,29 +3283,14 @@ public final class MediaDriver implements AutoCloseable
                     countersValuesBuffer(createCountersValuesBuffer(cncByteBuffer, cncMetaDataBuffer));
                 }
 
-                final EpochClock clock;
-                final long reuseTimeoutMs;
-                if (counterFreeToReuseTimeoutNs > 0)
-                {
-                    clock = epochClock;
-                    reuseTimeoutMs = Math.min(TimeUnit.NANOSECONDS.toMillis(counterFreeToReuseTimeoutNs), 1);
-                }
-                else
-                {
-                    clock = () -> 0;
-                    reuseTimeoutMs = 0;
-                }
+                final long reuseTimeoutMs = counterFreeToReuseTimeoutNs > 0 ?
+                    Math.max(TimeUnit.NANOSECONDS.toMillis(counterFreeToReuseTimeoutNs), 1) : 0;
 
-                if (useConcurrentCountersManager)
-                {
-                    countersManager = new ConcurrentCountersManager(
-                        countersMetaDataBuffer(), countersValuesBuffer(), US_ASCII, clock, reuseTimeoutMs);
-                }
-                else
-                {
-                    countersManager = new CountersManager(
-                        countersMetaDataBuffer(), countersValuesBuffer(), US_ASCII, clock, reuseTimeoutMs);
-                }
+                countersManager = useConcurrentCountersManager ?
+                    new ConcurrentCountersManager(
+                        countersMetaDataBuffer(), countersValuesBuffer(), US_ASCII, cachedEpochClock, reuseTimeoutMs) :
+                    new CountersManager(
+                        countersMetaDataBuffer(), countersValuesBuffer(), US_ASCII, cachedEpochClock, reuseTimeoutMs);
             }
 
             if (null == systemCounters)

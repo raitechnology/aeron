@@ -28,12 +28,42 @@ extern "C"
 
 #define AERON_NULL_VALUE (-1)
 
+#define AERON_CLIENT_ERROR_DRIVER_TIMEOUT (-1000)
+#define AERON_CLIENT_ERROR_CLIENT_TIMEOUT (-1001)
+#define AERON_CLIENT_ERROR_CONDUCTOR_SERVICE_TIMEOUT (-1002)
+#define AERON_CLIENT_ERROR_BUFFER_FULL (-1003)
+
 typedef struct aeron_context_stct aeron_context_t;
 typedef struct aeron_stct aeron_t;
 typedef struct aeron_buffer_claim_stct aeron_buffer_claim_t;
 typedef struct aeron_publication_stct aeron_publication_t;
 typedef struct aeron_exclusive_publication_stct aeron_exclusive_publication_t;
 typedef struct aeron_header_stct aeron_header_t;
+
+#pragma pack(push)
+#pragma pack(4)
+typedef struct aeron_header_values_frame_stct
+{
+    int32_t frame_length;
+    int8_t version;
+    uint8_t flags;
+    int16_t type;
+    int32_t term_offset;
+    int32_t session_id;
+    int32_t stream_id;
+    int32_t term_id;
+    int64_t reserved_value;
+}
+aeron_header_values_frame_t;
+
+typedef struct aeron_header_values_stct
+{
+    aeron_header_values_frame_t frame;
+    int32_t initial_term_id;
+}
+aeron_header_values_t;
+#pragma pack(pop)
+
 typedef struct aeron_subscription_stct aeron_subscription_t;
 typedef struct aeron_image_stct aeron_image_t;
 typedef struct aeron_counter_stct aeron_counter_t;
@@ -45,6 +75,7 @@ typedef struct aeron_client_registering_resource_stct aeron_async_add_publicatio
 typedef struct aeron_client_registering_resource_stct aeron_async_add_exclusive_publication_t;
 typedef struct aeron_client_registering_resource_stct aeron_async_add_subscription_t;
 typedef struct aeron_client_registering_resource_stct aeron_async_add_counter_t;
+typedef struct aeron_client_registering_resource_stct aeron_async_destination_t;
 
 typedef struct aeron_image_fragment_assembler_stct aeron_image_fragment_assembler_t;
 typedef struct aeron_image_controlled_fragment_assembler_stct aeron_image_controlled_fragment_assembler_t;
@@ -76,10 +107,20 @@ uint64_t aeron_context_get_keepalive_interval_ns(aeron_context_t *context);
 int aeron_context_set_resource_linger_duration_ns(aeron_context_t *context, uint64_t value);
 uint64_t aeron_context_get_resource_linger_duration_ns(aeron_context_t *context);
 
+#define AERON_CLIENT_PRE_TOUCH_MAPPED_MEMORY_ENV_VAR "AERON_CLIENT_PRE_TOUCH_MAPPED_MEMORY"
+
+int aeron_context_set_pre_touch_mapped_memory(aeron_context_t *context, bool value);
+bool aeron_context_get_pre_touch_mapped_memory(aeron_context_t *context);
+
 /**
  * The error handler to be called when an error occurs.
  */
 typedef void (*aeron_error_handler_t)(void *clientd, int errcode, const char *message);
+
+/**
+ * Generalised notification callback.
+ */
+typedef void (*aeron_notification_t)(void *clientd);
 
 int aeron_context_set_error_handler(aeron_context_t *context, aeron_error_handler_t handler, void *clientd);
 aeron_error_handler_t aeron_context_get_error_handler(aeron_context_t *context);
@@ -119,11 +160,11 @@ void *aeron_context_get_on_new_exclusive_publication_clientd(aeron_context_t *co
  * Function called by aeron_client_t to deliver notification that the media driver has added an aeron_subscription_t
  * successfully.
  *
- * Implementations should do the minimum work for passing off state to another thread for later processing.
+ * Implementations should do the minimum work for handing off state to another thread for later processing.
  *
  * @param clientd to be returned in the call
  * @param async associated with the original aeron_add_async_subscription call
- * @param channel of the subscirption
+ * @param channel of the subscription
  * @param stream_id within the channel of the subscription
  * @param session_id of the subscription
  * @param correlation_id used by the subscription
@@ -155,7 +196,7 @@ typedef void (*aeron_on_available_image_t)(void *clientd, aeron_subscription_t *
  *
  * @param clientd to be returned in the call.
  * @param subscription that image is part of.
- * @param image that has become unavailble.
+ * @param image that has become unavailable.
  */
 typedef void (*aeron_on_unavailable_image_t)(void *clientd, aeron_subscription_t *subscription, aeron_image_t *image);
 
@@ -282,15 +323,24 @@ void aeron_main_idle_strategy(aeron_t *client, int work_count);
  */
 int aeron_close(aeron_t *client);
 
-/*
+/**
+ * Determines if the client has been closed, e.g. via a driver timeout. Don't call this method after calling
+ * aeron_close as that will have already freed the associated memory.
+ *
+ * @param client to check if closed.
+ * @return true if it has been closed, false otherwise.
+ */
+bool aeron_is_closed(aeron_t *client);
+
+/**
  * Aeron API functions
  */
 
 /**
  * Call stream_out to print the counter labels and values.
  *
- * @param client to get the counters from
- * @param stream_out to call for each label and value
+ * @param client to get the counters from.
+ * @param stream_out to call for each label and value.
  */
 void aeron_print_counters(aeron_t *client, void (*stream_out)(const char *));
 
@@ -336,7 +386,7 @@ int aeron_async_add_publication(
  *
  * @param publication to set if completed successfully.
  * @param async to check for completion.
- * @return 0 for not cmplete (try again), 1 for completed successfully, or -1 for an error.
+ * @return 0 for not complete (try again), 1 for completed successfully, or -1 for an error.
  */
 int aeron_async_add_publication_poll(aeron_publication_t **publication, aeron_async_add_publication_t *async);
 
@@ -358,7 +408,7 @@ int aeron_async_add_exclusive_publication(
  *
  * @param publication to set if completed successfully.
  * @param async to check for completion.
- * @return 0 for not cmplete (try again), 1 for completed successfully, or -1 for an error.
+ * @return 0 for not complete (try again), 1 for completed successfully, or -1 for an error.
  */
 int aeron_async_add_exclusive_publication_poll(
     aeron_exclusive_publication_t **publication, aeron_async_add_exclusive_publication_t *async);
@@ -374,7 +424,7 @@ int aeron_async_add_exclusive_publication_poll(
  * @param on_available_image_handler to be called when images become available on the subscription.
  * @param on_available_image_clientd to be passed when images become available on the subscription.
  * @param on_unavailable_image_handler to be called when images go unavailable on the subscription.
- * @param on_available_image_clientd to be pacced when images go unavailable on the subscription.
+ * @param on_available_image_clientd to be called when images go unavailable on the subscription.
  * @return 0 for success or -1 for an error.
  */
 int aeron_async_add_subscription(
@@ -392,7 +442,7 @@ int aeron_async_add_subscription(
  *
  * @param subscription to set if completed successfully.
  * @param async to check for completion.
- * @return 0 for not cmplete (try again), 1 for completed successfully, or -1 for an error.
+ * @return 0 for not complete (try again), 1 for completed successfully, or -1 for an error.
  */
 int aeron_async_add_subscription_poll(aeron_subscription_t **subscription, aeron_async_add_subscription_t *async);
 
@@ -433,7 +483,7 @@ int aeron_async_add_counter(
  *
  * @param counter to set if completed successfully.
  * @param async to check for completion.
- * @return 0 for not cmplete (try again), 1 for completed successfully, or -1 for an error.
+ * @return 0 for not complete (try again), 1 for completed successfully, or -1 for an error.
  */
 int aeron_async_add_counter_poll(aeron_counter_t **counter, aeron_async_add_counter_t *async);
 
@@ -465,7 +515,7 @@ aeron_on_close_client_pair_t;
  *
  * @param client for the counter
  * @param pair holding the handler to call and a clientd to pass when called.
- * @return 0 for succes and -1 for error
+ * @return 0 for success and -1 for error
  */
 int aeron_add_available_counter_handler(aeron_t *client, aeron_on_available_counter_pair_t *pair);
 
@@ -476,7 +526,7 @@ int aeron_add_available_counter_handler(aeron_t *client, aeron_on_available_coun
  *
  * @param client for the counter
  * @param pair holding the handler to call and a clientd to pass when called.
- * @return 0 for succes and -1 for error
+ * @return 0 for success and -1 for error
  */
 int aeron_remove_available_counter_handler(aeron_t *client, aeron_on_available_counter_pair_t *pair);
 
@@ -487,7 +537,7 @@ int aeron_remove_available_counter_handler(aeron_t *client, aeron_on_available_c
  *
  * @param client for the counter
  * @param pair holding the handler to call and a clientd to pass when called.
- * @return 0 for succes and -1 for error
+ * @return 0 for success and -1 for error
  */
 int aeron_add_unavailable_counter_handler(aeron_t *client, aeron_on_unavailable_counter_pair_t *pair);
 
@@ -498,7 +548,7 @@ int aeron_add_unavailable_counter_handler(aeron_t *client, aeron_on_unavailable_
  *
  * @param client for the counter
  * @param pair holding the handler to call and a clientd to pass when called.
- * @return 0 for succes and -1 for error
+ * @return 0 for success and -1 for error
  */
 int aeron_remove_unavailable_counter_handler(aeron_t *client, aeron_on_unavailable_counter_pair_t *pair);
 
@@ -509,7 +559,7 @@ int aeron_remove_unavailable_counter_handler(aeron_t *client, aeron_on_unavailab
  *
  * @param client for the counter
  * @param pair holding the handler to call and a clientd to pass when called.
- * @return 0 for succes and -1 for error
+ * @return 0 for success and -1 for error
  */
 int aeron_add_close_handler(aeron_t *client, aeron_on_close_client_pair_t *pair);
 
@@ -520,13 +570,83 @@ int aeron_add_close_handler(aeron_t *client, aeron_on_close_client_pair_t *pair)
  *
  * @param client for the counter
  * @param pair holding the handler to call and a clientd to pass when called.
- * @return 0 for succes and -1 for error
+ * @return 0 for success and -1 for error
  */
 int aeron_remove_close_handler(aeron_t *client, aeron_on_close_client_pair_t *pair);
 
-/*
- * Counters Reader functions
+/**
+ * Counters Reader functions and definitions
  */
+
+// Separate definition to avoid needing aeron_bitutil.h
+#define AERON_COUNTER_CACHE_LINE_LENGTH (64u)
+
+#pragma pack(push)
+#pragma pack(4)
+typedef struct aeron_counter_value_descriptor_stct
+{
+    int64_t counter_value;
+    int64_t registration_id;
+    int64_t owner_id;
+    uint8_t pad1[(2 * AERON_COUNTER_CACHE_LINE_LENGTH) - (3 * sizeof(int64_t))];
+}
+aeron_counter_value_descriptor_t;
+
+typedef struct aeron_counter_metadata_descriptor_stct
+{
+    int32_t state;
+    int32_t type_id;
+    int64_t free_for_reuse_deadline_ms;
+    uint8_t key[(2 * AERON_COUNTER_CACHE_LINE_LENGTH) - (2 * sizeof(int32_t)) - sizeof(int64_t)];
+    int32_t label_length;
+    uint8_t label[(6 * AERON_COUNTER_CACHE_LINE_LENGTH) - sizeof(int32_t)];
+}
+aeron_counter_metadata_descriptor_t;
+#pragma pack(pop)
+
+
+#define AERON_COUNTER_VALUE_LENGTH sizeof(aeron_counter_value_descriptor_t)
+#define AERON_COUNTER_REGISTRATION_ID_OFFSET offsetof(aeron_counter_value_descriptor_t, registration_id)
+
+#define AERON_COUNTER_METADATA_LENGTH sizeof(aeron_counter_metadata_descriptor_t)
+#define AERON_COUNTER_TYPE_ID_OFFSET offsetof(aeron_counter_metadata_descriptor_t, type_id)
+#define AERON_COUNTER_FREE_FOR_REUSE_DEADLINE_OFFSET offsetof(aeron_counter_metadata_descriptor_t, free_for_reuse_deadline_ms)
+#define AERON_COUNTER_KEY_OFFSET offsetof(aeron_counter_metadata_descriptor_t, key)
+#define AERON_COUNTER_LABEL_LENGTH_OFFSET offsetof(aeron_counter_metadata_descriptor_t, label)
+
+#define AERON_COUNTER_MAX_LABEL_LENGTH sizeof(((aeron_counter_metadata_descriptor_t *)NULL)->label)
+#define AERON_COUNTER_MAX_KEY_LENGTH sizeof(((aeron_counter_metadata_descriptor_t *)NULL)->key)
+
+#define AERON_COUNTER_RECORD_UNUSED (0)
+#define AERON_COUNTER_RECORD_ALLOCATED (1)
+#define AERON_COUNTER_RECORD_RECLAIMED (-1)
+
+#define AERON_COUNTER_REGISTRATION_ID_DEFAULT INT64_C(0)
+#define AERON_COUNTER_NOT_FREE_TO_REUSE (INT64_MAX)
+#define AERON_COUNTER_OWNER_ID_DEFAULT INT64_C(0)
+
+#define AERON_NULL_COUNTER_ID (-1)
+
+#define AERON_COUNTER_OFFSET(id) ((id) * AERON_COUNTER_VALUE_LENGTH)
+#define AERON_COUNTER_METADATA_OFFSET(id) ((id) * AERON_COUNTER_METADATA_LENGTH)
+
+typedef struct aeron_counters_reader_buffers_stct
+{
+    uint8_t *values;
+    uint8_t *metadata;
+    size_t values_length;
+    size_t metadata_length;
+}
+aeron_counters_reader_buffers_t;
+
+/**
+ * Get buffer pointers and lengths for the counters reader.
+ *
+ * @param reader reader containing the buffers.
+ * @param buffers output structure to return the buffers.
+ * @return -1 on failure, 0 on success.
+ */
+int aeron_counters_reader_get_buffers(aeron_counters_reader_t *reader, aeron_counters_reader_buffers_t *buffers);
 
 /**
  * Function called by aeron_counters_reader_foreach_counter for each counter in the aeron_counters_reader_t.
@@ -538,25 +658,109 @@ int aeron_remove_close_handler(aeron_t *client, aeron_on_close_client_pair_t *pa
  * @param clientd to be returned in the call
  */
 typedef void (*aeron_counters_reader_foreach_counter_func_t)(
-    int64_t value, int32_t id, const char *label, size_t label_length, void *clientd);
+    int64_t value,
+    int32_t id,
+    int32_t type_id,
+    const uint8_t *key,
+    size_t key_length,
+    const char *label,
+    size_t label_length,
+    void *clientd);
 
 /**
- * Iterate over the coounters in the counters_reader and call the given function for each counter.
+ * Iterate over the counters in the counters_reader and call the given function for each counter.
  *
  * @param counters_reader to iterate over.
  * @param func to call for each counter.
  * @param clientd to pass for each call to func.
  */
 void aeron_counters_reader_foreach_counter(
-    aeron_counters_reader_t *counters_reader,
-    aeron_counters_reader_foreach_counter_func_t func,
-    void *clientd);
+    aeron_counters_reader_t *counters_reader, aeron_counters_reader_foreach_counter_func_t func, void *clientd);
 
-/*
- * TLM 2020-05-25: More functions to be added for counters reader. Feel free to send us feedback.
+/**
+ * Get the current max counter id.
+ *
+ * @param reader to query
+ * @return -1 on failure, max counter id on success.
  */
+int32_t aeron_counters_reader_max_counter_id(aeron_counters_reader_t *reader);
 
-/*
+/**
+ * Get the address for a counter.
+ *
+ * @param counters_reader that contains the counter
+ * @param counter_id to find
+ * @return address of the counter value
+ */
+int64_t *aeron_counters_reader_addr(aeron_counters_reader_t *counters_reader, int32_t counter_id);
+
+/**
+ * Get the registration id assigned to a counter.
+ *
+ * @param counters_reader representing the this pointer.
+ * @param counter_id      for which the registration id requested.
+ * @param registration_id pointer for value to be set on success.
+ * @return -1 on failure, 0 on success.
+ */
+int aeron_counters_reader_counter_registration_id(
+    aeron_counters_reader_t *counters_reader, int32_t counter_id, int64_t *registration_id);
+
+/**
+ * Get the owner id assigned to a counter which will typically be the client id.
+ *
+ * @param counters_reader representing the this pointer.
+ * @param counter_id      for which the registration id requested.
+ * @param owner_id        pointer for value to be set on success.
+ * @return -1 on failure, 0 on success.
+ */
+int aeron_counters_reader_counter_owner_id(
+    aeron_counters_reader_t *counters_reader, int32_t counter_id, int64_t *owner_id);
+
+/**
+ * Get the state for a counter.
+ *
+ * @param counters_reader that contains the counter
+ * @param counter_id to find
+ * @param state out pointer for the current state to be stored in.
+ * @return -1 on failure, 0 on success.
+ */
+int aeron_counters_reader_counter_state(aeron_counters_reader_t *counters_reader, int32_t counter_id, int32_t *state);
+
+/**
+ * Get the type id for a counter.
+ *
+ * @param counters_reader that contains the counter
+ * @param counter_id to find
+ * @param type id out pointer for the current state to be stored in.
+ * @return -1 on failure, 0 on success.
+ */
+int aeron_counters_reader_counter_type_id(
+    aeron_counters_reader_t *counters_reader, int32_t counter_id, int32_t *type_id);
+
+/**
+ * Get the label for a counter.
+ *
+ * @param counters_reader that contains the counter
+ * @param counter_id to find
+ * @param buffer to store the counter in.
+ * @param buffer_length length of the output buffer
+ * @return -1 on failure, number of characters copied to buffer on success.
+ */
+int aeron_counters_reader_counter_label(
+    aeron_counters_reader_t *counters_reader, int32_t counter_id, char *buffer, size_t buffer_length);
+
+/**
+ * Get the free for reuse deadline (ms) for a counter.
+ *
+ * @param counters_reader that contains the counter.
+ * @param counter_id to find.
+ * @param deadline_ms output value to store the deadline.
+ * @return -1 on failure, 0 on success.
+ */
+int aeron_counters_reader_free_for_reuse_deadline_ms(
+    aeron_counters_reader_t *counters_reader, int32_t counter_id, int64_t *deadline_ms);
+
+/**
  * Publication functions
  */
 
@@ -600,21 +804,23 @@ void aeron_counters_reader_foreach_counter(
  *
  * @param clientd passed to the offer function.
  * @param buffer of the entire frame, including Aeron data header.
- * @param frame_length of the enture frame.
+ * @param frame_length of the entire frame.
  */
 typedef int64_t (*aeron_reserved_value_supplier_t)(void *clientd, uint8_t *buffer, size_t frame_length);
 
 /**
  * Structure to hold pointer to a buffer and the buffer length.
- *
- * TLM 2020-05-25: want to make this a typedef of iovec when already defined as an option.
  */
+#if !defined(AERON_IOVEC)
 typedef struct aeron_iovec_stct
 {
     uint8_t *iov_base;
     size_t iov_len;
 }
 aeron_iovec_t;
+#else
+typedef struct iov aeron_iovec_t;
+#endif
 
 /**
  * Structure used to hold information for a try_claim function call.
@@ -698,7 +904,7 @@ typedef struct aeron_publication_constants_stct
     size_t max_payload_length;
 
     /**
-     * Session id of the publication.
+     * Stream id of the publication.
      */
     int32_t stream_id;
 
@@ -712,6 +918,16 @@ typedef struct aeron_publication_constants_stct
      * terms have passed since creation.
      */
     int32_t initial_term_id;
+
+    /**
+     * Counter id for the publication limit.
+     */
+    int32_t publication_limit_counter_id;
+
+    /**
+     * Counter id for the channel status indicator
+     */
+    int32_t channel_status_indicator_id;
 }
 aeron_publication_constants_t;
 
@@ -721,7 +937,7 @@ aeron_publication_constants_t;
  * @param publication to publish on.
  * @param buffer to publish.
  * @param length of the buffer.
- * @param reserved_value_supplier to use for setting the reserved fvalue field or NULL.
+ * @param reserved_value_supplier to use for setting the reserved value field or NULL.
  * @param clientd to pass to the reserved_value_supplier.
  * @return the new stream position otherwise a negative error value.
  */
@@ -738,7 +954,7 @@ int64_t aeron_publication_offer(
  * @param publication to publish on.
  * @param iov array for the vectors
  * @param iovcnt of the number of vectors
- * @param reserved_value_supplier to use for setting the reserved fvalue field or NULL.
+ * @param reserved_value_supplier to use for setting the reserved value field or NULL.
  * @param clientd to pass to the reserved_value_supplier.
  * @return the new stream position otherwise a negative error value.
  */
@@ -749,7 +965,7 @@ int64_t aeron_publication_offerv(
     aeron_reserved_value_supplier_t reserved_value_supplier,
     void *clientd);
 
-/*
+/**
  * Try to claim a range in the publication log into which a message can be written with zero copy semantics.
  * Once the message has been written then aeron_buffer_claim_commit should be called thus making it available.
  * A claim length cannot be greater than max payload length.
@@ -779,7 +995,7 @@ int64_t aeron_publication_try_claim(
     size_t length,
     aeron_buffer_claim_t *buffer_claim);
 
-/*
+/**
  * Get the status of the media channel for this publication.
  * <p>
  * The status will be ERRORED (-1) if a socket exception occurs on setup and ACTIVE (1) if all is well.
@@ -788,6 +1004,14 @@ int64_t aeron_publication_try_claim(
  * @return 1 for ACTIVE, -1 for ERRORED
  */
 int64_t aeron_publication_channel_status(aeron_publication_t *publication);
+
+/**
+ * Has the publication closed?
+ *
+ * @param publication to check
+ * @return true if this publication is closed.
+ */
+bool aeron_publication_is_closed(aeron_publication_t *publication);
 
 /**
  * Has the publication seen an active Subscriber recently?
@@ -802,7 +1026,7 @@ bool aeron_publication_is_connected(aeron_publication_t *publication);
  *
  * @param publication to get the constants for.
  * @param constants structure to fill in with the constants
- * @return 0 for succes and -1 for error.
+ * @return 0 for success and -1 for error.
  */
 int aeron_publication_constants(aeron_publication_t *publication, aeron_publication_constants_t *constants);
 
@@ -827,32 +1051,110 @@ int64_t aeron_publication_position_limit(aeron_publication_t *publication);
 /**
  * Add a destination manually to a multi-destination-cast publication.
  *
+ * @param async object to use for polling completion.
  * @param publication to add destination to.
  * @param uri for the destination to add.
- * @return 0 for success or -1 for error.
+ * @return 0 for success and -1 for error.
  */
-int aeron_publication_add_destination(aeron_publication_t *publication, const char *uri);
+int aeron_publication_async_add_destination(
+    aeron_async_destination_t **async,
+    aeron_t *client,
+    aeron_publication_t *publication,
+    const char *uri);
 
 /**
- * Remove a previously added destination manually from a multi-destination-cast publication.
+ * Remove a destination manually from a multi-destination-cast publication.
  *
+ * @param async object to use for polling completion.
  * @param publication to remove destination from.
  * @param uri for the destination to remove.
- * @return 0 for success or -1 for error.
+ * @return 0 for success and -1 for error.
  */
-int aeron_publication_remove_destination(aeron_publication_t *publication, const char *uri);
+int aeron_publication_async_remove_destination(
+    aeron_async_destination_t **async,
+    aeron_t *client,
+    aeron_publication_t *publication,
+    const char *uri);
 
 /**
- * Asynchronously close the publication.
+ * Poll the completion of the add/remove of a destination to/from a publication.
+ *
+ * @param async to check for completion.
+ * @return 0 for not complete (try again), 1 for completed successfully, or -1 for an error.
+ */
+int aeron_publication_async_destination_poll(aeron_async_destination_t *async);
+
+/**
+ * Add a destination manually to a multi-destination-cast exclusive publication.
+ *
+ * @param async object to use for polling completion.
+ * @param publication to add destination to.
+ * @param uri for the destination to add.
+ * @return 0 for success and -1 for error.
+ */
+int aeron_exclusive_publication_async_add_destination(
+    aeron_async_destination_t **async,
+    aeron_t *client,
+    aeron_exclusive_publication_t *publication,
+    const char *uri);
+
+/**
+ * Remove a destination manually from a multi-destination-cast exclusive publication.
+ *
+ * @param async object to use for polling completion.
+ * @param publication to remove destination from.
+ * @param uri for the destination to remove.
+ * @return 0 for success and -1 for error.
+ */
+int aeron_exclusive_publication_async_remove_destination(
+    aeron_async_destination_t **async,
+    aeron_t *client,
+    aeron_exclusive_publication_t *publication,
+    const char *uri);
+
+/**
+ * Poll the completion of the add/remove of a destination to/from an exclusive publication.
+ *
+ * @param async to check for completion.
+ * @return 0 for not complete (try again), 1 for completed successfully, or -1 for an error.
+ */
+int aeron_exclusive_publication_async_destination_poll(aeron_async_destination_t *async);
+
+/**
+ * Asynchronously close the publication. Will callback on the on_complete notification when the subscription is closed.
+ * The callback is optional, use NULL for the on_complete callback if not required.
  *
  * @param publication to close
+ * @param on_close_complete optional callback to execute once the subscription has been closed and freed. This may
+ * happen on a separate thread, so the caller should ensure that clientd has the appropriate lifetime.
+ * @param on_close_complete_clientd parameter to pass to the on_complete callback.
  * @return 0 for success or -1 for error.
  */
-int aeron_publication_close(aeron_publication_t *publication);
+int aeron_publication_close(
+    aeron_publication_t *publication, aeron_notification_t on_close_complete, void *on_close_complete_clientd);
 
-/*
- * TLM 2020-05-25: More functions to be added for publications. Feel free to send us feedback.
+/**
+ * Get the publication's channel
+ *
+ * @param publication this
+ * @return channel uri string
  */
+const char *aeron_publication_channel(aeron_publication_t *publication);
+
+/**
+ * Get the publication's stream id
+ *
+ * @param publication this
+ * @return stream id
+ */
+int32_t aeron_publication_stream_id(aeron_publication_t *publication);
+
+/**
+ * Get the publication's session id
+ * @param publication this
+ * @return session id
+ */
+int32_t aeron_publication_session_id(aeron_publication_t *publication);
 
 /*
  * Exclusive Publication functions
@@ -864,7 +1166,7 @@ int aeron_publication_close(aeron_publication_t *publication);
  * @param publication to publish on.
  * @param buffer to publish.
  * @param length of the buffer.
- * @param reserved_value_supplier to use for setting the reserved fvalue field or NULL.
+ * @param reserved_value_supplier to use for setting the reserved value field or NULL.
  * @param clientd to pass to the reserved_value_supplier.
  * @return the new stream position otherwise a negative error value.
  */
@@ -881,7 +1183,7 @@ int64_t aeron_exclusive_publication_offer(
  * @param publication to publish on.
  * @param iov array for the vectors
  * @param iovcnt of the number of vectors
- * @param reserved_value_supplier to use for setting the reserved fvalue field or NULL.
+ * @param reserved_value_supplier to use for setting the reserved value field or NULL.
  * @param clientd to pass to the reserved_value_supplier.
  * @return the new stream position otherwise a negative error value.
  */
@@ -892,7 +1194,7 @@ int64_t aeron_exclusive_publication_offerv(
     aeron_reserved_value_supplier_t reserved_value_supplier,
     void *clientd);
 
-/*
+/**
  * Try to claim a range in the publication log into which a message can be written with zero copy semantics.
  * Once the message has been written then aeron_buffer_claim_commit should be called thus making it available.
  * A claim length cannot be greater than max payload length.
@@ -915,9 +1217,7 @@ int64_t aeron_exclusive_publication_offerv(
  * @return the new stream position otherwise a negative error value.
  */
 int64_t aeron_exclusive_publication_try_claim(
-    aeron_exclusive_publication_t *publication,
-    size_t length,
-    aeron_buffer_claim_t *buffer_claim);
+    aeron_exclusive_publication_t *publication, size_t length, aeron_buffer_claim_t *buffer_claim);
 
 /**
  * Append a padding record log of a given length to make up the log to a position.
@@ -925,9 +1225,7 @@ int64_t aeron_exclusive_publication_try_claim(
  * @param length of the range to claim, in bytes.
  * @return the new stream position otherwise a negative error value.
  */
-int64_t aeron_exclusive_publication_append_padding(
-    aeron_exclusive_publication_t *publication,
-    size_t length);
+int64_t aeron_exclusive_publication_append_padding(aeron_exclusive_publication_t *publication, size_t length);
 
 /**
  * Offer a block of pre-formatted message fragments directly into the current term.
@@ -938,11 +1236,9 @@ int64_t aeron_exclusive_publication_append_padding(
  * @return the new stream position otherwise a negative error value.
  */
 int64_t aeron_exclusive_publication_offer_block(
-    aeron_exclusive_publication_t *publication,
-    const uint8_t *buffer,
-    size_t length);
+    aeron_exclusive_publication_t *publication, const uint8_t *buffer, size_t length);
 
-/*
+/**
  * Get the status of the media channel for this publication.
  * <p>
  * The status will be ERRORED (-1) if a socket exception occurs on setup and ACTIVE (1) if all is well.
@@ -957,7 +1253,7 @@ int64_t aeron_exclusive_publication_channel_status(aeron_exclusive_publication_t
  *
  * @param publication to get the constants for.
  * @param constants structure to fill in with the constants
- * @return 0 for succes and -1 for error.
+ * @return 0 for success and -1 for error.
  */
 int aeron_exclusive_publication_constants(
     aeron_exclusive_publication_t *publication, aeron_publication_constants_t *constants);
@@ -981,36 +1277,33 @@ int64_t aeron_exclusive_publication_position(aeron_exclusive_publication_t *publ
 int64_t aeron_exclusive_publication_position_limit(aeron_exclusive_publication_t *publication);
 
 /**
- * Add a destination manually to a multi-destination-cast publication.
- *
- * @param publication to add destination to.
- * @param uri for the destination to add.
- * @return 0 for success or -1 for error.
- */
-int aeron_exclusive_publication_add_destination(aeron_exclusive_publication_t *exclusive, const char *uri);
-
-/**
- * Remove a previously added destination manually from a multi-destination-cast publication.
- *
- * @param publication to remove destination from.
- * @param uri for the destination to remove.
- * @return 0 for success or -1 for error.
- */
-int aeron_exclusive_publication_remove_destination(aeron_exclusive_publication_t *exclusive, const char *uri);
-
-/**
  * Asynchronously close the publication.
  *
  * @param publication to close
  * @return 0 for success or -1 for error.
  */
-int aeron_exclusive_publication_close(aeron_exclusive_publication_t *publication);
+int aeron_exclusive_publication_close(
+    aeron_exclusive_publication_t *publication,
+    aeron_notification_t on_close_complete,
+    void *on_close_complete_clientd);
 
-/*
- * TLM 2020-05-25: More functions to be added for exclusive publications. Feel free to send us feedback.
+/**
+ * Has the exclusive publication closed?
+ *
+ * @param publication to check
+ * @return true if this publication is closed.
  */
+bool aeron_exclusive_publication_is_closed(aeron_exclusive_publication_t *publication);
 
-/*
+/**
+ * Has the exclusive publication seen an active Subscriber recently?
+ *
+ * @param publication to check.
+ * @return true if this publication has recently seen an active subscriber otherwise false.
+ */
+bool aeron_exclusive_publication_is_connected(aeron_exclusive_publication_t *publication);
+
+/**
  * Subscription functions
  *
  * Aeron Subscriber API for receiving a reconstructed image for a stream of messages from publishers on
@@ -1047,25 +1340,25 @@ typedef enum aeron_controlled_fragment_handler_action_en
     /**
      * Abort the current polling operation and do not advance the position for this fragment.
      */
-    AERON_ACTION_ABORT,
+    AERON_ACTION_ABORT = 1,
 
     /**
      * Break from the current polling operation and commit the position as of the end of the current fragment
      * being handled.
      */
-    AERON_ACTION_BREAK,
+    AERON_ACTION_BREAK = 2,
 
     /**
      * Continue processing but commit the position as of the end of the current fragment so that
      * flow control is applied to this point.
      */
-    AERON_ACTION_COMMIT,
+    AERON_ACTION_COMMIT = 3,
 
     /**
      * Continue processing until fragment limit or no fragments with position commit at end of poll as in
      * aeron_fragment_handler_t.
      */
-    AERON_ACTION_CONTINUE
+    AERON_ACTION_CONTINUE = 4
 }
 aeron_controlled_fragment_handler_action_t;
 
@@ -1098,12 +1391,57 @@ typedef void (*aeron_block_handler_t)(
     void *clientd, const uint8_t *buffer, size_t length, int32_t session_id, int32_t term_id);
 
 /**
- * Get session id field from the message header.
+ * Get all of the field values from the header. This will do a memcpy into the supplied header_values_t pointer.
  *
- * @param header to query.
- * @return session id field or -1 for error (Check aeron_errcode).
+ * @param header to read values from.
+ * @param values to copy values to, must not be null.
+ * @return 0 on success, -1 on failure.
  */
-int32_t aeron_header_session_id(aeron_header_t *header);
+int aeron_header_values(aeron_header_t *header, aeron_header_values_t *values);
+
+/**
+ * Get the current position to which the Image has advanced on reading this message.
+ *
+ * @param header the current header message
+ * @return the current position to which the Image has advanced on reading this message.
+ */
+int64_t aeron_header_position(aeron_header_t *header);
+
+typedef struct aeron_subscription_constants_stct
+{
+    /**
+     * Media address for delivery to the channel.
+     *
+     * This returns a pointer only valid for the lifetime of the subscription.
+     */
+    const char *channel;
+
+    /**
+     * Callback used to indicate when an Image becomes available under this Subscription.
+     */
+    aeron_on_available_image_t on_available_image;
+
+    /**
+     * Callback used to indicate when an Image goes unavailable under this Subscription.
+     */
+    aeron_on_unavailable_image_t on_unavailable_image;
+
+    /**
+     * Return the registration id used to register this Subscription with the media driver.
+     */
+    int64_t registration_id;
+
+    /**
+     * Stream identity for scoping within the channel media address.
+     */
+    int32_t stream_id;
+
+    /**
+     * Counter id for the channel status indicator
+     */
+    int32_t channel_status_indicator_id;
+}
+aeron_subscription_constants_t;
 
 /**
  * Poll the images under the subscription for available message fragments.
@@ -1111,7 +1449,7 @@ int32_t aeron_header_session_id(aeron_header_t *header);
  * Each fragment read will be a whole message if it is under MTU length. If larger than MTU then it will come
  * as a series of fragments ordered within a session.
  * <p>
- * To assemble messages that span multiple fragments then use aeron_fragment_asssembler_t.
+ * To assemble messages that span multiple fragments then use aeron_fragment_assembler_t.
  *
  * @param subscription to poll.
  * @param handler for handling each message fragment as it is read.
@@ -1137,7 +1475,10 @@ int aeron_subscription_poll(
  * @return the number of fragments received or -1 for error.
  */
 int aeron_subscription_controlled_poll(
-    aeron_subscription_t *subscription, aeron_controlled_fragment_handler_t handler, void *clientd, size_t fragment_limit);
+    aeron_subscription_t *subscription,
+    aeron_controlled_fragment_handler_t handler,
+    void *clientd,
+    size_t fragment_limit);
 
 /**
  * Poll the images under the subscription for available message fragments in blocks.
@@ -1159,6 +1500,15 @@ long aeron_subscription_block_poll(
  * @return true if this subscription connected by having at least one open publication image.
  */
 bool aeron_subscription_is_connected(aeron_subscription_t *subscription);
+
+/**
+ * Fill in a structure with the constants in use by a subscription.
+ *
+ * @param subscription to get the constants for.
+ * @param constants structure to fill in with the constants
+ * @return 0 for success and -1 for error.
+ */
+int aeron_subscription_constants(aeron_subscription_t *subscription, aeron_subscription_constants_t *constants);
 
 /**
  * Count of images associated to this subscription.
@@ -1199,7 +1549,7 @@ aeron_image_t *aeron_subscription_image_at_index(aeron_subscription_t *subscript
  * @param handler to be called for each image.
  */
 void aeron_subscription_for_each_image(
-    aeron_subscription_t *subscription, void (*handler)(aeron_image_t *image));
+    aeron_subscription_t *subscription, void (*handler)(aeron_image_t *image, void *clientd), void *clientd);
 
 /**
  * Retain the given image for access in the application.
@@ -1220,13 +1570,13 @@ int aeron_subscription_image_retain(aeron_subscription_t *subscription, aeron_im
  *
  * @param subscription that image is part of.
  * @param image to release
- * @return 0 for succes and -1 for error.
+ * @return 0 for success and -1 for error.
  */
 int aeron_subscription_image_release(aeron_subscription_t *subscription, aeron_image_t *image);
 
 bool aeron_subscription_is_closed(aeron_subscription_t *subscription);
 
-/*
+/**
  * Get the status of the media channel for this subscription.
  * <p>
  * The status will be ERRORED (-1) if a socket exception occurs on setup and ACTIVE (1) if all is well.
@@ -1237,50 +1587,50 @@ bool aeron_subscription_is_closed(aeron_subscription_t *subscription);
 int64_t aeron_subscription_channel_status(aeron_subscription_t *subscription);
 
 /**
- * Media address for delivery to the channel.
+ * Add a destination manually to a multi-destination-subscription.
  *
- * @param subscription to query.
- * @return Media address for delivery to the channel or NULL for error.
- */
-const char *aeron_subscription_channel(aeron_subscription_t *subscription);
-
-/**
- * Stream identity for scoping within the channel media address.
- *
- * @param subscription to query.
- * @return Stream identity for scoping within the channel media address or -1 for error. Check aeron_errcode.
- */
-int32_t aeron_subscription_stream_id(aeron_subscription_t *subscription);
-
-/**
- * Add a destination manually to a multi-destination subscription.
- *
+ * @param async object to use for polling completion.
  * @param subscription to add destination to.
  * @param uri for the destination to add.
  * @return 0 for success and -1 for error.
  */
-int aeron_subscription_add_destination(aeron_subscription_t *subscription, const char *uri);
+int aeron_subscription_async_add_destination(
+    aeron_async_destination_t **async,
+    aeron_t *client,
+    aeron_subscription_t *subscription,
+    const char *uri);
 
 /**
- * Remove a previously added destination from a multi-destination subscription.
+ * Remove a destination manually from a multi-destination-subscription.
  *
+ * @param async object to use for polling completion.
  * @param subscription to remove destination from.
  * @param uri for the destination to remove.
  * @return 0 for success and -1 for error.
  */
-int aeron_subscription_remove_destination(aeron_subscription_t *subscription, const char *uri);
+int aeron_subscription_async_remove_destination(
+    aeron_async_destination_t **async, aeron_t *client, aeron_subscription_t *subscription, const char *uri);
 
 /**
- * Asynchronously close the subscription.
+ * Poll the completion of add/remove of a destination to/from a subscription.
+ *
+ * @param async to check for completion.
+ * @return 0 for not complete (try again), 1 for completed successfully, or -1 for an error.
+ */
+int aeron_subscription_async_destination_poll(aeron_async_destination_t *async);
+
+/**
+ * Asynchronously close the subscription. Will callback on the on_complete notification when the subscription is
+ * closed. The callback is optional, use NULL for the on_complete callback if not required.
  *
  * @param subscription to close
+ * @param on_close_complete optional callback to execute once the subscription has been closed and freed. This may
+ * happen on a separate thread, so the caller should ensure that clientd has the appropriate lifetime.
+ * @param on_close_complete_clientd parameter to pass to the on_complete callback.
  * @return 0 for success or -1 for error.
  */
-int aeron_subscription_close(aeron_subscription_t *subscription);
-
-/*
- * TLM 2020-05-25: More functions to be added for subscriptions. Feel free to send us feedback.
- */
+int aeron_subscription_close(
+    aeron_subscription_t *subscription, aeron_notification_t on_close_complete, void *on_close_complete_clientd);
 
 /**
  * Image Functions
@@ -1298,21 +1648,71 @@ int aeron_subscription_close(aeron_subscription_t *subscription);
  */
 
 /**
- * The sessionId for the steam of messages. Sessions are unique within a subscription and unique across
- * all publications from a source identity.
- *
- * @param image to query.
- * @return the sessionId for the steam of messages or -1 for error (Check aeron_errcode).
+ * Configuration for an image that does not change during it's lifetime.
  */
-int32_t aeron_image_session_id(aeron_image_t *image);
+typedef struct aeron_image_constants_stct
+{
+    /**
+     * The subscription to which this image belongs.
+     */
+    aeron_subscription_t *subscription;
+
+    /**
+     * The source identity of the sending publisher as an abstract concept appropriate for the media.
+     */
+    const char *source_identity;
+
+    /**
+     * The correlationId for identification of the image with the media driver.
+     */
+    int64_t correlation_id;
+
+    /**
+     * Get the position the subscriber joined this stream at.
+     */
+    int64_t join_position;
+
+    /**
+     * Number of bits to right shift a position to get a term count for how far the stream has progressed.
+     */
+    size_t position_bits_to_shift;
+
+    /**
+     * Get the length in bytes for each term partition in the log buffer.
+     */
+    size_t term_buffer_length;
+
+    /**
+     * The length in bytes of the MTU (Maximum Transmission Unit) the Sender used for the datagram.
+     */
+    size_t mtu_length;
+
+    /**
+     * The sessionId for the steam of messages. Sessions are unique within a subscription and unique across
+     * all publications from a source identity.
+     */
+    int32_t session_id;
+
+    /**
+     * The initial term at which the stream started for this session.
+     */
+    int32_t initial_term_id;
+
+    /**
+     * Counter id that refers to the subscriber position for this image.
+     */
+    int32_t subscriber_position_id;
+}
+aeron_image_constants_t;
 
 /**
- * The source identity of the sending publisher as an abstract concept appropriate for the media.
+ * Fill in a structure with the constants in use by a image.
  *
- * @param image to query.
- * @return source identity of the sending publisher as an abstract concept appropriate for the media or NULL for error.
+ * @param image to get the constants for.
+ * @param constants structure to fill in with the constants
+ * @return 0 for success and -1 for error.
  */
-const char *aeron_image_source_identity(aeron_image_t *image);
+int aeron_image_constants(aeron_image_t *image, aeron_image_constants_t *constants);
 
 /**
  * The position this image has been consumed to by the subscriber.
@@ -1459,10 +1859,6 @@ int64_t aeron_image_controlled_peek(
 int aeron_image_block_poll(
     aeron_image_t *image, aeron_block_handler_t handler, void *clientd, size_t block_length_limit);
 
-/*
- * TLM 2020-05-25: More functions to be added for images. Feel free to send us feedback.
- */
-
 bool aeron_image_is_closed(aeron_image_t *image);
 
 /**
@@ -1481,14 +1877,12 @@ bool aeron_image_is_closed(aeron_image_t *image);
  * Create an image fragment assembler for use with a single image.
  *
  * @param assembler to be set when created successfully.
- * @param delegate to call on completed
+ * @param delegate to call on completed.
  * @param delegate_clientd to pass to delegate handler.
  * @return 0 for success and -1 for error.
  */
 int aeron_image_fragment_assembler_create(
-    aeron_image_fragment_assembler_t **assembler,
-    aeron_fragment_handler_t delegate,
-    void *delegate_clientd);
+    aeron_image_fragment_assembler_t **assembler, aeron_fragment_handler_t delegate, void *delegate_clientd);
 
 /**
  * Delete an image fragment assembler.
@@ -1551,9 +1945,7 @@ aeron_controlled_fragment_handler_action_t aeron_controlled_image_fragment_assem
  * @return 0 for success and -1 for error.
  */
 int aeron_fragment_assembler_create(
-    aeron_fragment_assembler_t **assembler,
-    aeron_fragment_handler_t delegate,
-    void *delegate_clientd);
+    aeron_fragment_assembler_t **assembler, aeron_fragment_handler_t delegate, void *delegate_clientd);
 
 /**
  * Delete a fragment assembler.
@@ -1607,9 +1999,9 @@ int aeron_controlled_fragment_assembler_delete(aeron_controlled_fragment_assembl
 aeron_controlled_fragment_handler_action_t aeron_controlled_fragment_assembler_handler(
     void *clientd, const uint8_t *buffer, size_t length, aeron_header_t *header);
 
-/*
-* Counter functions
-*/
+/**
+ * Counter functions
+ */
 
 /**
  * Return a pointer to the counter value.
@@ -1620,12 +2012,46 @@ aeron_controlled_fragment_handler_action_t aeron_controlled_fragment_assembler_h
 int64_t *aeron_counter_addr(aeron_counter_t *counter);
 
 /**
+ * Configuration for a counter that does not change during it's lifetime.
+ */
+typedef struct aeron_counter_constants_stct
+{
+    /**
+     * Return the registration id used to register this counter with the media driver.
+     */
+    int64_t registration_id;
+
+    /**
+     * Identity for the counter within the counters reader and counters manager.
+     */
+    int32_t counter_id;
+}
+aeron_counter_constants_t;
+
+/**
+ * Fill in a structure with the constants in use by a counter.
+ *
+ * @param counter to get the constants for.
+ * @param constants structure to fill in with the constants.
+ * @return 0 for success and -1 for error.
+ */
+int aeron_counter_constants(aeron_counter_t *counter, aeron_counter_constants_t *constants);
+
+/**
  * Asynchronously close the counter.
  *
- * @param counter to close
+ * @param counter to close.
  * @return 0 for success or -1 for error.
  */
-int aeron_counter_close(aeron_counter_t *counter);
+int aeron_counter_close(
+    aeron_counter_t *counter, aeron_notification_t on_close_complete, void *on_close_complete_clientd);
+
+/**
+ * Check if the counter is closed
+ * @param counter to check
+ * @return true if closed, false otherwise.
+ */
+bool aeron_counter_is_closed(aeron_counter_t *counter);
 
 /**
  * Return full version and build string.
@@ -1739,6 +2165,73 @@ int aeron_errcode();
  * @return aeron error message for calling thread.
  */
 const char *aeron_errmsg();
+
+/**
+ * Get the default path used by the Aeron media driver.
+ *
+ * @param path buffer to store the path.
+ * @param path_length space available in the buffer
+ * @return -1 if there is an issue or the number of bytes written to path excluding the terminator `\0`. If this
+ * is equal to or greater than the path_length then the path has been truncated.
+ */
+int aeron_default_path(char *path, size_t path_length);
+
+/**
+ * Gets the registration id for addition of the counter. Note that using this after a call to poll the succeeds or
+ * errors is undefined behaviour.  As the async_add_counter_t may have been freed.
+ *
+ * @param add_counter used to check for completion.
+ * @return registration id for the counter.
+ */
+int64_t aeron_async_add_counter_get_registration_id(aeron_async_add_counter_t *add_counter);
+
+/**
+ * Gets the registration id for addition of the publication. Note that using this after a call to poll the succeeds or
+ * errors is undefined behaviour. As the async_add_publication_t may have been freed.
+ *
+ * @param add_publication used to check for completion.
+ * @return registration id for the publication.
+ */
+int64_t aeron_async_add_publication_get_registration_id(aeron_async_add_publication_t *add_publication);
+
+/**
+ * Gets the registration id for addition of the exclusive_publication. Note that using this after a call to poll the
+ * succeeds or errors is undefined behaviour. As the async_add_exclusive_publication_t may have been freed.
+ *
+ * @param add_exclusive_publication used to check for completion.
+ * @return registration id for the exclusive_publication.
+ */
+int64_t aeron_async_add_exclusive_exclusive_publication_get_registration_id(
+    aeron_async_add_exclusive_publication_t *add_exclusive_publication);
+
+/**
+ * Gets the registration id for addition of the subscription. Note that using this after a call to poll the succeeds or
+ * errors is undefined behaviour. As the async_add_subscription_t may have been freed.
+ *
+ * @param add_subscription used to check for completion.
+ * @return registration id for the subscription.
+ */
+int64_t aeron_async_add_subscription_get_registration_id(aeron_async_add_subscription_t *add_subscription);
+
+/**
+ * Gets the registration_id for the destination command supplied. Note that this is the correlation_id used for
+ * the specified destination command, not the registration_id for the original parent resource (publication,
+ * subscription).
+ *
+ * @param async_destination tracking the current destination command.
+ * @return correlation_id sent to driver.
+ */
+int64_t aeron_async_destination_get_registration_id(aeron_async_destination_t *async_destination);
+
+/**
+ * Request the media driver terminates operation and closes all resources.
+ *
+ * @param directory    in which the media driver is running.
+ * @param token_buffer containing the authentication token confirming the client is allowed to terminate the driver.
+ * @param token_length of the token in the buffer.
+ * @return
+ */
+int aeron_context_request_driver_termination(const char *directory, const uint8_t *token_buffer, size_t token_length);
 
 #ifdef __cplusplus
 }

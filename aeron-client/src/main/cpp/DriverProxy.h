@@ -17,15 +17,14 @@
 #ifndef AERON_DRIVER_PROXY_H
 #define AERON_DRIVER_PROXY_H
 
-#include <array>
-#include <concurrent/ringbuffer/ManyToOneRingBuffer.h>
-#include <command/PublicationMessageFlyweight.h>
-#include <command/RemoveMessageFlyweight.h>
-#include <command/SubscriptionMessageFlyweight.h>
-#include <command/DestinationMessageFlyweight.h>
-#include <command/CounterMessageFlyweight.h>
-#include <command/TerminateDriverFlyweight.h>
-#include <command/ControlProtocolEvents.h>
+#include "concurrent/ringbuffer/ManyToOneRingBuffer.h"
+#include "command/PublicationMessageFlyweight.h"
+#include "command/RemoveMessageFlyweight.h"
+#include "command/SubscriptionMessageFlyweight.h"
+#include "command/DestinationMessageFlyweight.h"
+#include "command/CounterMessageFlyweight.h"
+#include "command/TerminateDriverFlyweight.h"
+#include "command/ControlProtocolEvents.h"
 
 namespace aeron
 {
@@ -50,6 +49,11 @@ public:
     inline std::int64_t timeOfLastDriverKeepalive()
     {
         return m_toDriverCommandBuffer.consumerHeartbeatTime();
+    }
+
+    std::int64_t nextCorrelationId()
+    {
+        return m_toDriverCommandBuffer.nextCorrelationId();
     }
 
     inline std::int64_t clientId() const

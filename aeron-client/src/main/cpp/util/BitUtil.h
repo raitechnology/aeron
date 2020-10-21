@@ -19,7 +19,7 @@
 #include <cassert>
 #include <cstdint>
 #include <type_traits>
-#include <util/Exceptions.h>
+#include "util/Exceptions.h"
 
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -34,7 +34,7 @@ namespace aeron { namespace util
 namespace BitUtil
 {
 /** Length of the data blocks used by the CPU cache sub-system in bytes. */
-static const size_t CACHE_LINE_LENGTH = 64;
+static const std::size_t CACHE_LINE_LENGTH = 64;
 
 template<typename value_t>
 inline bool isPowerOfTwo(value_t value) noexcept
@@ -95,9 +95,9 @@ inline int numberOfLeadingZeroes(value_t value) noexcept
 #elif defined(_MSC_VER)
     unsigned long r;
 
-    if (_BitScanReverse(&r, (unsigned long)value))
+    if (_BitScanReverse(&r, static_cast<unsigned long>(value)))
     {
-        return 31 - (int)r;
+        return 31 - static_cast<int>(r);
     }
 
     return 32;
@@ -122,7 +122,7 @@ inline int numberOfTrailingZeroes(value_t value) noexcept
 
     if (_BitScanForward(&r, (unsigned long)value))
     {
-        return r;
+        return static_cast<int>(r);
     }
 
     return 32;
@@ -143,9 +143,9 @@ inline int numberOfTrailingZeroes(value_t value) noexcept
         return 32;
     }
 
-    uint32_t index = static_cast<uint32_t>((value & -value) * 0x04D7651F);
+    std::uint32_t index = static_cast<std::uint32_t>((value & -value) * 0x04D7651F);
 
-    return table[index >> 27];
+    return table[index >> 27u];
 #endif
 }
 
@@ -162,7 +162,7 @@ inline value_t findNextPowerOfTwo(value_t value) noexcept
 
     // Set all bits below the leading one using binary expansion
     // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
-    for (size_t i = 1; i < sizeof(value) * 8; i = i * 2)
+    for (std::size_t i = 1; i < sizeof(value) * 8; i = i * 2)
     {
         value |= (value >> i);
     }

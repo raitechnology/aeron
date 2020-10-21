@@ -23,7 +23,6 @@ extern "C"
 {
 #include "aeronc.h"
 #include "aeron_image.h"
-#include "concurrent/aeron_logbuffer_descriptor.h"
 }
 
 #define STREAM_ID (10);
@@ -84,8 +83,7 @@ public:
         }
     }
 
-    static void fragment_handler(
-        void *clientd, const uint8_t *buffer, size_t length, aeron_header_t *header)
+    static void fragment_handler(void *clientd, const uint8_t *buffer, size_t length, aeron_header_t *header)
     {
         auto image = reinterpret_cast<CFragmentAssemblerTest *>(clientd);
 
@@ -117,7 +115,7 @@ public:
 
 protected:
     AERON_DECL_ALIGNED(fragment_buffer_t m_fragment, 16);
-    aeron_header_t m_header;
+    aeron_header_t m_header = {};
     std::function<void(const uint8_t *, size_t, aeron_header_t *)> m_handler = nullptr;
     std::function<aeron_controlled_fragment_handler_action_t(const uint8_t *, size_t, aeron_header_t *)>
         m_controlled_handler = nullptr;
@@ -133,7 +131,9 @@ TEST_F(CFragmentAssemblerTest, shouldPassThroughUnfragmentedMessage)
     {
         called = true;
         EXPECT_EQ(length, msgLength);
-        EXPECT_EQ(aeron_header_session_id(header), SESSION_ID);
+        aeron_header_values_t header_values;
+        EXPECT_EQ(0, aeron_header_values(header, &header_values));
+        EXPECT_EQ(SESSION_ID, header_values.frame.session_id);
         verifyPayload(buffer, length);
     };
 
@@ -149,7 +149,9 @@ TEST_F(CFragmentAssemblerTest, shouldReassembleFromTwoFragments)
     {
         called = true;
         EXPECT_EQ(length, msgLength * 2);
-        EXPECT_EQ(aeron_header_session_id(header), SESSION_ID);
+        aeron_header_values_t header_values;
+        EXPECT_EQ(0, aeron_header_values(header, &header_values));
+        EXPECT_EQ(SESSION_ID, header_values.frame.session_id);
         verifyPayload(buffer, length);
     };
 
@@ -170,7 +172,9 @@ TEST_F(CFragmentAssemblerTest, shouldReassembleFromThreeFragments)
     {
         called = true;
         EXPECT_EQ(length, msgLength * 3);
-        EXPECT_EQ(aeron_header_session_id(header), SESSION_ID);
+        aeron_header_values_t header_values;
+        EXPECT_EQ(0, aeron_header_values(header, &header_values));
+        EXPECT_EQ(SESSION_ID, header_values.frame.session_id);
         verifyPayload(buffer, length);
     };
 

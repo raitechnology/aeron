@@ -23,7 +23,7 @@
 #endif
 
 #include "util/aeron_platform.h"
-#if defined(AERON_COMPILER_MSVC) && defined(AERON_CPU_X64)
+#if defined(AERON_COMPILER_MSVC)
 #define _CRT_RAND_S
 
 #define S_IRWXU 0
@@ -31,14 +31,11 @@
 #define S_IRWXO 0
 #endif
 #include <stdlib.h>
-#include <stddef.h>
 #include <sys/stat.h>
 #include <stdio.h>
-#include <time.h>
 #include <fcntl.h>
-
-#include "aeron_windows.h"
 #include <inttypes.h>
+
 #include "util/aeron_error.h"
 #include "aeronmd.h"
 #include "aeron_alloc.h"
@@ -47,7 +44,6 @@
 #include "aeron_driver.h"
 #include "aeron_socket.h"
 #include "util/aeron_dlopen.h"
-#include "aeron_driver_context.h"
 
 void aeron_log_func_stderr(const char *str)
 {
@@ -141,13 +137,15 @@ int aeron_report_existing_errors(aeron_mapped_file_t *cnc_map, const char *aeron
         aeron_format_date(datestamp, sizeof(datestamp) - 1, aeron_epoch_clock());
         while (true)
         {
-            char* invalid_win_symbol = strstr(datestamp, ":");
+            char *invalid_win_symbol = strstr(datestamp, ":");
             if (invalid_win_symbol == NULL)
             {
                 break;
             }
+
             *invalid_win_symbol = '-';
         }
+
         snprintf(buffer, sizeof(buffer) - 1, "%s-%s-error.log", aeron_dir, datestamp);
 
         if ((saved_errors_file = fopen(buffer, "w")) != NULL)
@@ -330,7 +328,7 @@ int aeron_driver_validate_sufficient_socket_buffer_lengths(aeron_driver_t *drive
 
     size_t default_rcvbuf = 0;
     len = sizeof(default_rcvbuf);
-    if (aeron_getsockopt(probe_fd, SOL_SOCKET, SO_SNDBUF, &default_sndbuf, &len) < 0)
+    if (aeron_getsockopt(probe_fd, SOL_SOCKET, SO_RCVBUF, &default_rcvbuf, &len) < 0)
     {
         aeron_set_err_from_last_err_code("getsockopt(SO_RCVBUF) %s:%d", __FILE__, __LINE__);
         goto cleanup;
@@ -423,8 +421,8 @@ int aeron_driver_validate_sufficient_socket_buffer_lengths(aeron_driver_t *drive
 
     result = 0;
 
-    cleanup:
-        aeron_close_socket(probe_fd);
+cleanup:
+    aeron_close_socket(probe_fd);
 
     return result;
 }
@@ -709,6 +707,11 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
         goto error;
     }
 
+    if (aeron_driver_context_bindings_clientd_create_entries(context) < 0)
+    {
+        goto error;
+    }
+
     _driver->context = context;
 
     for (int i = 0; i < AERON_AGENT_RUNNER_MAX; i++)
@@ -757,6 +760,16 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
         goto error;
     }
 
+    if (aeron_driver_validate_unblock_timeout(_driver->context) < 0)
+    {
+        goto error;
+    }
+
+    if (aeron_driver_validate_untethered_timeouts(_driver->context) < 0)
+    {
+        goto error;
+    }
+
     context->counters_manager = &_driver->conductor.counters_manager;
     context->system_counters = &_driver->conductor.system_counters;
     context->error_log = &_driver->conductor.error_log;
@@ -783,6 +796,7 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
 
     _driver->context->receiver_proxy = &_driver->receiver.receiver_proxy;
 
+    aeron_mpsc_rb_next_correlation_id(&_driver->conductor.to_driver_commands);
     aeron_mpsc_rb_consumer_heartbeat_time(&_driver->conductor.to_driver_commands, aeron_epoch_clock());
     aeron_cnc_version_signal_cnc_ready((aeron_cnc_metadata_t *)context->cnc_map.addr, AERON_CNC_VERSION);
 
@@ -909,8 +923,7 @@ int aeron_driver_init(aeron_driver_t **driver, aeron_driver_context_t *context)
     *driver = _driver;
     return 0;
 
-    error:
-
+error:
     if (NULL != _driver)
     {
         aeron_free(_driver);

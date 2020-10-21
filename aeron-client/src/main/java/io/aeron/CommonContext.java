@@ -64,18 +64,35 @@ public class CommonContext implements Cloneable
      */
     public enum InferableBoolean
     {
+        /**
+         * Force the conditional to be false.
+         */
         FORCE_FALSE,
+
+        /**
+         * Force the conditional to be true.
+         */
         FORCE_TRUE,
+
+        /**
+         * Try to infer if true or false is most appropriate.
+         */
         INFER;
 
+        /**
+         * Parse the string looking for {@code true}, {@code false}, or {@code infer}.
+         *
+         * @param value to be parsed.
+         * @return {@link InferableBoolean} which matches the string.
+         */
         public static InferableBoolean parse(final String value)
         {
-            if (null == value || "infer".equalsIgnoreCase(value))
+            if (null == value || "infer".equals(value))
             {
                 return INFER;
             }
 
-            return "true".equalsIgnoreCase(value) ? FORCE_TRUE : FORCE_FALSE;
+            return "true".equals(value) ? FORCE_TRUE : FORCE_FALSE;
         }
     }
 
@@ -283,10 +300,18 @@ public class CommonContext implements Cloneable
     public static final String GROUP_TAG_PARAM_NAME = "gtag";
 
     /**
+     * Parameter name for Publication URI param to indicate whether spy subscriptions should simulate a connection.
+     */
+    public static final String SPIES_SIMULATE_CONNECTION_PARAM_NAME = "ssc";
+
+    /**
      * Using an integer because there is no support for boolean. 1 is concluded, 0 is not concluded.
      */
     private static final AtomicIntegerFieldUpdater<CommonContext> IS_CONCLUDED_UPDATER = newUpdater(
         CommonContext.class, "isConcluded");
+
+    private static final Map<String, Boolean> DEBUG_FIELDS_SEEN = new ConcurrentHashMap<>();
+
     private volatile int isConcluded;
 
     private long driverTimeoutMs = DRIVER_TIMEOUT_MS;
@@ -403,7 +428,7 @@ public class CommonContext implements Cloneable
     /**
      * Get the directory in which the aeron config files are stored.
      * <p>
-     * This is valid after a call to {@link #conclude()}.
+     * This is valid after a call to {@link #conclude()} or {@link #concludeAeronDirectory()}.
      *
      * @return the directory in which the aeron config files are stored.
      * @see #aeronDirectoryName()
@@ -524,7 +549,6 @@ public class CommonContext implements Cloneable
         return checkDebugTimeout(driverTimeoutMs, TimeUnit.MILLISECONDS);
     }
 
-    private static final Map<String, Boolean> DEBUG_FIELDS_SEEN = new ConcurrentHashMap<>();
     /**
      * Override the supplied timeout with the debug value if it has been set and we are in debug mode.
      *

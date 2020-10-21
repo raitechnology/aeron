@@ -20,10 +20,8 @@
 #include <unordered_map>
 #include <vector>
 #include <mutex>
-#include <concurrent/logbuffer/TermReader.h>
-#include <concurrent/status/UnsafeBufferPosition.h>
-#include <util/LangUtil.h>
-#include <util/ScopeUtils.h>
+#include "util/LangUtil.h"
+#include "util/ScopeUtils.h"
 #include "Publication.h"
 #include "ExclusivePublication.h"
 #include "Subscription.h"
@@ -48,6 +46,7 @@ typedef std::function<long long()> nano_clock_t;
 
 static const long KEEPALIVE_TIMEOUT_MS = 500;
 static const long RESOURCE_TIMEOUT_MS = 1000;
+static const std::size_t static_handler_token = 0;
 
 class CLIENT_EXPORT ClientConductor
 {
@@ -83,18 +82,15 @@ public:
         m_resourceLingerTimeoutMs(resourceLingerTimeoutMs),
         m_interServiceTimeoutMs(static_cast<long>(interServiceTimeoutNs / 1000000)),
         m_preTouchMappedMemory(preTouchMappedMemory),
-        m_driverActive(true),
-        m_isClosed(false),
         m_timeOfLastDoWorkMs(m_epochClock()),
         m_timeOfLastKeepaliveMs(m_timeOfLastDoWorkMs),
-        m_timeOfLastCheckManagedResourcesMs(m_timeOfLastDoWorkMs),
-        m_padding()
+        m_timeOfLastCheckManagedResourcesMs(m_timeOfLastDoWorkMs)
     {
         static_cast<void>(m_padding);
 
-        m_onAvailableCounterHandlers.emplace_back(availableCounterHandler);
-        m_onUnavailableCounterHandlers.emplace_back(unavailableCounterHandler);
-        m_onCloseClientHandlers.emplace_back(onCloseClientHandler);
+        m_onAvailableCounterHandlers.emplace_back(std::make_pair(static_handler_token, availableCounterHandler));
+        m_onUnavailableCounterHandlers.emplace_back(std::make_pair(static_handler_token, unavailableCounterHandler));
+        m_onCloseClientHandlers.emplace_back(std::make_pair(static_handler_token, onCloseClientHandler));
     }
 
     ~ClientConductor();
@@ -192,17 +188,23 @@ public:
 
     std::int64_t removeRcvDestination(std::int64_t subscriptionRegistrationId, const std::string &endpointChannel);
 
-    void addAvailableCounterHandler(const on_available_counter_t &handler);
+    std::int64_t addAvailableCounterHandler(const on_available_counter_t &handler);
 
     void removeAvailableCounterHandler(const on_available_counter_t &handler);
 
-    void addUnavailableCounterHandler(const on_unavailable_counter_t &handler);
+    void removeAvailableCounterHandler(std::int64_t registrationId);
+
+    std::int64_t addUnavailableCounterHandler(const on_unavailable_counter_t &handler);
 
     void removeUnavailableCounterHandler(const on_unavailable_counter_t &handler);
 
-    void addCloseClientHandler(const on_close_client_t &handler);
+    void removeUnavailableCounterHandler(std::int64_t registrationId);
+
+    std::int64_t addCloseClientHandler(const on_close_client_t &handler);
 
     void removeCloseClientHandler(const on_close_client_t &handler);
+
+    void removeCloseClientHandler(std::int64_t registrationId);
 
     inline CountersReader &countersReader()
     {
@@ -230,7 +232,7 @@ public:
         return std::atomic_load_explicit(&m_isClosed, std::memory_order_acquire);
     }
 
-    inline void ensureOpen()
+    inline void ensureOpen() const
     {
         if (isClosed())
         {
@@ -405,9 +407,9 @@ private:
     on_new_subscription_t m_onNewSubscriptionHandler;
     exception_handler_t m_errorHandler;
 
-    std::vector<on_available_counter_t> m_onAvailableCounterHandlers;
-    std::vector<on_unavailable_counter_t> m_onUnavailableCounterHandlers;
-    std::vector<on_close_client_t> m_onCloseClientHandlers;
+    std::vector<std::pair<std::int64_t, on_available_counter_t>> m_onAvailableCounterHandlers;
+    std::vector<std::pair<std::int64_t, on_unavailable_counter_t>> m_onUnavailableCounterHandlers;
+    std::vector<std::pair<std::int64_t, on_close_client_t>> m_onCloseClientHandlers;
 
     epoch_clock_t m_epochClock;
     long m_driverTimeoutMs;
@@ -415,8 +417,8 @@ private:
     long m_interServiceTimeoutMs;
     bool m_preTouchMappedMemory;
     bool m_isInCallback = false;
-    std::atomic<bool> m_driverActive;
-    std::atomic<bool> m_isClosed;
+    std::atomic<bool> m_driverActive = { true };
+    std::atomic<bool> m_isClosed = { false };
     std::recursive_mutex m_adminLock;
     std::unique_ptr<AtomicCounter> m_heartbeatTimestamp;
 
@@ -424,7 +426,7 @@ private:
     long long m_timeOfLastKeepaliveMs;
     long long m_timeOfLastCheckManagedResourcesMs;
 
-    char m_padding[util::BitUtil::CACHE_LINE_LENGTH];
+    char m_padding[util::BitUtil::CACHE_LINE_LENGTH] = {};
 
     inline int onHeartbeatCheckTimeouts()
     {

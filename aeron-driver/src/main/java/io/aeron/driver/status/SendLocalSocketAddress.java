@@ -28,14 +28,18 @@ public class SendLocalSocketAddress
     /**
      * The human readable name for the beginning of a label.
      */
-    public static final String NAME = "send-local-sockaddr";
+    public static final String NAME = "snd-local-sockaddr";
 
     public static AtomicCounter allocate(
-        final MutableDirectBuffer tempBuffer, final CountersManager countersManager, final int channelStatusId)
+        final MutableDirectBuffer tempBuffer,
+        final CountersManager countersManager,
+        final long registrationId,
+        final int channelStatusId)
     {
         return LocalSocketAddressStatus.allocate(
             tempBuffer,
             countersManager,
+            registrationId,
             channelStatusId,
             NAME,
             LocalSocketAddressStatus.LOCAL_SOCKET_ADDRESS_STATUS_TYPE_ID);

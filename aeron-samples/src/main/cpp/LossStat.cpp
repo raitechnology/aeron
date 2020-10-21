@@ -17,12 +17,8 @@
 #include <iostream>
 #include <thread>
 #include <cstdio>
-
-#define __STDC_FORMAT_MACROS
-
 #include <cinttypes>
 
-#include "util/MemoryMappedFile.h"
 #include "util/CommandOptionParser.h"
 #include "concurrent/reports/LossReportReader.h"
 #include "Context.h"
@@ -69,7 +65,7 @@ std::string formatDate(std::int64_t millisecondsSinceEpoch)
     char timeBuffer[80];
     char msecBuffer[8];
     char tzBuffer[8];
-    struct tm localTm;
+    struct tm localTm{};
 
 #ifdef _MSC_VER
     localtime_s(&localTm, &tm);

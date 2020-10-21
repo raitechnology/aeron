@@ -68,10 +68,12 @@ public class HeaderFlyweight extends UnsafeBuffer
      * header type SETUP
      */
     public static final int HDR_TYPE_SETUP = 0x05;
+
     /**
      * header type RTT Measurement
      */
     public static final int HDR_TYPE_RTTM = 0x06;
+
     /**
      * header type RESOLUTION
      */
@@ -87,30 +89,62 @@ public class HeaderFlyweight extends UnsafeBuffer
      */
     public static final byte CURRENT_VERSION = 0x0;
 
+    /**
+     * Offset in the frame at which the frame length field begins.
+     */
     public static final int FRAME_LENGTH_FIELD_OFFSET = 0;
+
+    /**
+     * Offset in the frame at which the version field begins.
+     */
     public static final int VERSION_FIELD_OFFSET = 4;
+
+    /**
+     * Offset in the frame at which the flags field begins.
+     */
     public static final int FLAGS_FIELD_OFFSET = 5;
+
+    /**
+     * Offset in the frame at which the frame type field begins.
+     */
     public static final int TYPE_FIELD_OFFSET = 6;
+
+    /**
+     * Minimum length of any Aeron frame.
+     */
     public static final int MIN_HEADER_LENGTH = TYPE_FIELD_OFFSET + SIZE_OF_SHORT;
 
+    /**
+     * Default constructor which can later be use to wrap a frame.
+     */
     public HeaderFlyweight()
     {
     }
 
+    /**
+     * Construct a flyweight which wraps a {@link UnsafeBuffer} over the frame.
+     *
+     * @param buffer to wrap for the flyweight.
+     */
     public HeaderFlyweight(final UnsafeBuffer buffer)
     {
         super(buffer);
     }
 
+    /**
+     * Construct a flyweight which wraps a {@link ByteBuffer} over the frame.
+     *
+     * @param buffer to wrap for the flyweight.
+     */
     public HeaderFlyweight(final ByteBuffer buffer)
     {
         super(buffer);
     }
 
     /**
-     * return version field value
+     * The version field value.
      *
-     * @return ver field value
+     * @return version field value.
      */
     public short version()
     {
@@ -118,10 +152,10 @@ public class HeaderFlyweight extends UnsafeBuffer
     }
 
     /**
-     * set version field value
+     * Set the version field value.
      *
-     * @param version field value
-     * @return flyweight
+     * @param version field value to be set.
+     * @return this for a fluent API.
      */
     public HeaderFlyweight version(final short version)
     {
@@ -131,9 +165,9 @@ public class HeaderFlyweight extends UnsafeBuffer
     }
 
     /**
-     * return flags field value
+     * The flags field value.
      *
-     * @return flags field value
+     * @return the flags field value.
      */
     public short flags()
     {
@@ -141,10 +175,10 @@ public class HeaderFlyweight extends UnsafeBuffer
     }
 
     /**
-     * set the flags field value
+     * Set the flags field value.
      *
-     * @param flags field value
-     * @return flyweight
+     * @param flags field value.
+     * @return this for a fluent API.
      */
     public HeaderFlyweight flags(final short flags)
     {
@@ -154,9 +188,9 @@ public class HeaderFlyweight extends UnsafeBuffer
     }
 
     /**
-     * return header type field
+     * The type field value.
      *
-     * @return type field value
+     * @return the type field value.
      */
     public int headerType()
     {
@@ -164,10 +198,10 @@ public class HeaderFlyweight extends UnsafeBuffer
     }
 
     /**
-     * set header type field
+     * Set the type field value.
      *
-     * @param type field value
-     * @return flyweight
+     * @param type field value.
+     * @return this for a fluent API.
      */
     public HeaderFlyweight headerType(final int type)
     {
@@ -177,9 +211,9 @@ public class HeaderFlyweight extends UnsafeBuffer
     }
 
     /**
-     * return frame length field
+     * The length of the frame field value.
      *
-     * @return frame length field
+     * @return length of the frame field value.
      */
     public int frameLength()
     {
@@ -187,10 +221,10 @@ public class HeaderFlyweight extends UnsafeBuffer
     }
 
     /**
-     * set frame length field
+     * Set the length of the frame field value.
      *
-     * @param length field value
-     * @return flyweight
+     * @param length field value.
+     * @return this for a fluent API.
      */
     public HeaderFlyweight frameLength(final int length)
     {

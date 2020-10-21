@@ -19,18 +19,15 @@
 extern "C"
 {
 #include "media/aeron_udp_channel.h"
-#include "util/aeron_error.h"
-#include "uri/aeron_uri.h"
 #include "util/aeron_env.h"
 }
 
 class UdpChannelTestBase
 {
 public:
-    UdpChannelTestBase() :
-        m_channel(NULL)
+    UdpChannelTestBase()
     {
-        aeron_default_name_resolver_supplier(&m_resolver, NULL, NULL);
+        aeron_default_name_resolver_supplier(&m_resolver, nullptr, nullptr);
     }
 
     virtual ~UdpChannelTestBase()
@@ -60,10 +57,10 @@ public:
             return ::inet_ntop(AF_INET6, &(ipv6_addr(addr)->sin6_addr), m_buffer, sizeof(m_buffer));
         }
 
-        return NULL;
+        return nullptr;
     }
 
-    int port(struct sockaddr_storage *addr)
+    static int port(struct sockaddr_storage *addr)
     {
         if (AF_INET == addr->ss_family)
         {
@@ -79,18 +76,18 @@ public:
 
     int parse_udp_channel(const char *uri)
     {
-        if (NULL != m_channel)
+        if (nullptr != m_channel)
         {
             aeron_udp_channel_delete(m_channel);
         }
 
-        return aeron_udp_channel_parse(strlen(uri), uri, &m_resolver, &m_channel);
+        return aeron_udp_channel_parse(strlen(uri), uri, &m_resolver, &m_channel, false);
     }
 
 protected:
-    char m_buffer[AERON_MAX_PATH];
-    aeron_udp_channel_t *m_channel;
-    aeron_name_resolver_t m_resolver;
+    char m_buffer[AERON_MAX_PATH] = {};
+    aeron_udp_channel_t *m_channel = nullptr;
+    aeron_name_resolver_t m_resolver = {};
 };
 
 class UdpChannelTest : public UdpChannelTestBase, public testing::Test
@@ -355,7 +352,7 @@ TEST_F(UdpChannelTest, shouldResolveWithNameLookup)
 
     aeron_name_resolver_supplier_func_t csv_supplier_func = aeron_name_resolver_supplier_load(
         AERON_NAME_RESOLVER_CSV_TABLE);
-    csv_supplier_func(&m_resolver, config_param, NULL);
+    csv_supplier_func(&m_resolver, config_param, nullptr);
 
     ASSERT_EQ(parse_udp_channel("aeron:udp?endpoint=NAME_0|control=NAME_1"), 0) << aeron_errmsg();
     EXPECT_STREQ(m_channel->uri.params.udp.endpoint, "NAME_0");
@@ -365,8 +362,8 @@ TEST_F(UdpChannelTest, shouldResolveWithNameLookup)
 TEST_F(UdpChannelTest, shouldFormatIPv4Address)
 {
     char buffer[AERON_NETUTIL_FORMATTED_MAX_LENGTH];
-    struct sockaddr_storage addr;
-    struct sockaddr_in *addr_in = reinterpret_cast<sockaddr_in *>(&addr);
+    struct sockaddr_storage addr{};
+    auto *addr_in = reinterpret_cast<sockaddr_in *>(&addr);
     inet_pton(AF_INET, "192.168.10.1", &addr_in->sin_addr);
     addr_in->sin_family = AF_INET;
     addr_in->sin_port = htons(UINT16_C(65535));
@@ -379,8 +376,8 @@ TEST_F(UdpChannelTest, shouldFormatIPv4Address)
 TEST_F(UdpChannelTest, shouldFormatIPv6Address)
 {
     char buffer[AERON_NETUTIL_FORMATTED_MAX_LENGTH];
-    struct sockaddr_storage addr;
-    struct sockaddr_in6 *addr_in = reinterpret_cast<sockaddr_in6 *>(&addr);
+    struct sockaddr_storage addr{};
+    auto *addr_in = reinterpret_cast<sockaddr_in6 *>(&addr);
     inet_pton(AF_INET6, "::1", &addr_in->sin6_addr);
     addr_in->sin6_family = AF_INET6;
     addr_in->sin6_port = htons(UINT16_C(65535));
@@ -393,8 +390,8 @@ TEST_F(UdpChannelTest, shouldFormatIPv6Address)
 TEST_F(UdpChannelTest, shouldHandleMaxLengthIPv6)
 {
     char buffer[AERON_NETUTIL_FORMATTED_MAX_LENGTH];
-    struct sockaddr_storage addr;
-    struct sockaddr_in6 *addr_in = reinterpret_cast<sockaddr_in6 *>(&addr);
+    struct sockaddr_storage addr{};
+    auto *addr_in = reinterpret_cast<sockaddr_in6 *>(&addr);
     inet_pton(AF_INET6, "ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255", &addr_in->sin6_addr);
     addr_in->sin6_family = AF_INET6;
     addr_in->sin6_port = htons(UINT16_C(65535));
@@ -407,8 +404,8 @@ TEST_F(UdpChannelTest, shouldHandleMaxLengthIPv6)
 TEST_F(UdpChannelTest, shouldHandleTooSmallBuffer)
 {
     char buffer[AERON_NETUTIL_FORMATTED_MAX_LENGTH];
-    struct sockaddr_storage addr;
-    struct sockaddr_in6 *addr_in = reinterpret_cast<sockaddr_in6 *>(&addr);
+    struct sockaddr_storage addr{};
+    auto *addr_in = reinterpret_cast<sockaddr_in6 *>(&addr);
     inet_pton(AF_INET6, "ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255", &addr_in->sin6_addr);
     addr_in->sin6_family = AF_INET6;
     addr_in->sin6_port = UINT16_C(65535);
@@ -426,7 +423,7 @@ TEST_P(UdpChannelNamesParameterisedTest, shouldBeValid)
     std::stringstream params_ss;
     std::stringstream uri_ss;
 
-    if (NULL != endpoint_name)
+    if (nullptr != endpoint_name)
     {
         params_ss << endpoint_name << ',' <<
             AERON_UDP_CHANNEL_ENDPOINT_KEY << ',' <<
@@ -434,7 +431,7 @@ TEST_P(UdpChannelNamesParameterisedTest, shouldBeValid)
             endpoint_address << ":40124" << '|';
     }
 
-    if (NULL != control_name)
+    if (nullptr != control_name)
     {
         params_ss << control_name << ',' <<
             AERON_UDP_CHANNEL_CONTROL_KEY << ',' <<
@@ -447,16 +444,16 @@ TEST_P(UdpChannelNamesParameterisedTest, shouldBeValid)
 
     aeron_name_resolver_supplier_func_t csv_supplier_func = aeron_name_resolver_supplier_load(
         AERON_NAME_RESOLVER_CSV_TABLE);
-    csv_supplier_func(&m_resolver, config_params, NULL);
+    csv_supplier_func(&m_resolver, config_params, nullptr);
 
     uri_ss << "aeron:udp?interface=localhost";
 
-    if (NULL != endpoint_name)
+    if (nullptr != endpoint_name)
     {
         uri_ss << "|endpoint=" << endpoint_name;
     }
 
-    if (NULL != control_address)
+    if (nullptr != control_address)
     {
         uri_ss << "|control=" << control_name;
     }
@@ -497,26 +494,26 @@ TEST_P(UdpChannelEqualityParameterisedTest, shouldMatch)
     const char *uri_1 = std::get<1>(GetParam());
     const char *uri_2 = std::get<2>(GetParam());
 
-    aeron_udp_channel_t *channel_1 = NULL;
-    aeron_udp_channel_t *channel_2 = NULL;
+    aeron_udp_channel_t *channel_1 = nullptr;
+    aeron_udp_channel_t *channel_2 = nullptr;
 
     aeron_name_resolver_t resolver;
-    aeron_default_name_resolver_supplier(&resolver, NULL, NULL);
+    aeron_default_name_resolver_supplier(&resolver, nullptr, nullptr);
 
-    if (NULL != uri_1)
+    if (nullptr != uri_1)
     {
-        ASSERT_LE(0, aeron_udp_channel_parse(strlen(uri_1), uri_1, &resolver, &channel_1)) << uri_1;
+        ASSERT_LE(0, aeron_udp_channel_parse(strlen(uri_1), uri_1, &resolver, &channel_1, false)) << uri_1;
     }
 
-    if (NULL != uri_2)
+    if (nullptr != uri_2)
     {
-        ASSERT_LE(0, aeron_udp_channel_parse(strlen(uri_2), uri_2, &resolver, &channel_2)) << uri_2;
+        ASSERT_LE(0, aeron_udp_channel_parse(strlen(uri_2), uri_2, &resolver, &channel_2, false)) << uri_2;
     }
 
     EXPECT_EQ(should_match, aeron_udp_channel_equals(channel_1, channel_2))
-                << uri_1 << "(" << (NULL != channel_1 ? channel_1->canonical_form : "null") << ")"
-                << " vs "
-                << uri_2 << "(" << (NULL != channel_2 ? channel_2->canonical_form : "null") << ")";
+        << uri_1 << "(" << (nullptr != channel_1 ? channel_1->canonical_form : "null") << ")"
+        << " vs "
+        << uri_2 << "(" << (nullptr != channel_2 ? channel_2->canonical_form : "null") << ")";
 
     aeron_udp_channel_delete(channel_1);
     aeron_udp_channel_delete(channel_2);

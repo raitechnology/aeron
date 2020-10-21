@@ -128,10 +128,10 @@ public class StreamingPublisher
 
         reporter.halt();
         executor.shutdown();
-        CloseHelper.quietClose(driver);
+        CloseHelper.close(driver);
     }
 
-    public static void printRate(
+    private static void printRate(
         final double messagesPerSec, final double bytesPerSec, final long totalFragments, final long totalBytes)
     {
         if (printingActive)

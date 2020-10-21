@@ -18,9 +18,8 @@
 
 #include <gtest/gtest.h>
 
-
 #include "MockAtomicBuffer.h"
-#include <concurrent/errors/DistinctErrorLog.h>
+#include "concurrent/errors/DistinctErrorLog.h"
 
 using namespace aeron::concurrent::errors;
 using namespace aeron::concurrent::mock;
@@ -49,13 +48,13 @@ public:
         m_mockBuffer.useAsSpy();
     }
 
-    virtual void SetUp()
+    void SetUp() override
     {
         m_buffer.fill(0);
     }
 
 protected:
-    AERON_DECL_ALIGNED(buffer_t m_buffer, 16);
+    AERON_DECL_ALIGNED(buffer_t m_buffer, 16) = {};
     MockAtomicBuffer m_mockBuffer;
     TimestampClock m_clock;
     DistinctErrorLog m_errorLog;

@@ -17,7 +17,6 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <aeron_driver_context.h>
-#include <uri/aeron_uri.h>
 #include "aeron_socket.h"
 #include "aeron_system_counters.h"
 #include "util/aeron_netutil.h"
@@ -140,7 +139,7 @@ int aeron_receive_channel_endpoint_delete(
     aeron_int64_counter_map_delete(&endpoint->stream_id_to_refcnt_map);
     aeron_int64_counter_map_delete(&endpoint->stream_and_session_id_to_refcnt_map);
     aeron_data_packet_dispatcher_close(&endpoint->dispatcher);
-    bool deleted_this_channel = false;
+    bool delete_this_channel = false;
 
     for (size_t i = 0, len = endpoint->destinations.length; i < len; i++)
     {
@@ -152,11 +151,11 @@ int aeron_receive_channel_endpoint_delete(
         }
 
         // The endpoint will be deleted by the destination, for simple endpoints, i.e. non-mds the channel is shared.
-        deleted_this_channel |= destination->conductor_fields.udp_channel == endpoint->conductor_fields.udp_channel;
+        delete_this_channel |= destination->conductor_fields.udp_channel == endpoint->conductor_fields.udp_channel;
         aeron_receive_destination_delete(destination, counters_manager);
     }
 
-    if (!deleted_this_channel)
+    if (!delete_this_channel)
     {
         aeron_udp_channel_delete(endpoint->conductor_fields.udp_channel);
     }
@@ -182,17 +181,18 @@ int aeron_receive_channel_endpoint_close(aeron_receive_channel_endpoint_t *endpo
 
 int aeron_receive_channel_endpoint_sendmsg(aeron_receive_channel_endpoint_t *endpoint, struct msghdr *msghdr)
 {
+    int min_bytes_sent = msghdr->msg_iov->iov_len;
+
     for (size_t i = 0, len = endpoint->destinations.length; i < len; i++)
     {
         aeron_receive_destination_t *destination = endpoint->destinations.array[i].destination;
+        const int sendmsg_result = destination->data_paths->sendmsg_func(
+            destination->data_paths, &destination->transport, msghdr);
 
-        if (destination->data_paths->sendmsg_func(destination->data_paths, &destination->transport, msghdr) < 0)
-        {
-            return -1;
-        }
+        min_bytes_sent = sendmsg_result < min_bytes_sent ? sendmsg_result : min_bytes_sent;
     }
 
-    return 0;
+    return min_bytes_sent;
 }
 
 int aeron_receive_channel_endpoint_send_sm(
@@ -345,6 +345,7 @@ int aeron_receive_channel_endpoint_send_rttm(
 
 void aeron_receive_channel_endpoint_dispatch(
     aeron_udp_channel_data_paths_t *data_paths,
+    aeron_udp_channel_transport_t *transport,
     void *receiver_clientd,
     void *endpoint_clientd,
     void *destination_clientd,
@@ -667,12 +668,40 @@ int aeron_receive_channel_endpoint_on_remove_subscription_by_session(
 int aeron_receive_channel_endpoint_on_add_publication_image(
     aeron_receive_channel_endpoint_t *endpoint, aeron_publication_image_t *image)
 {
+    for (size_t i = 0, len = endpoint->destinations.length; i < len; i++)
+    {
+        aeron_receive_destination_t *destination = endpoint->destinations.array[i].destination;
+
+        if (aeron_udp_channel_interceptors_image_notifications(
+            destination->data_paths,
+            &destination->transport,
+            image,
+            AERON_UDP_CHANNEL_INTERCEPTOR_ADD_NOTIFICATION) < 0)
+        {
+            return -1;
+        }
+    }
+
     return aeron_data_packet_dispatcher_add_publication_image(&endpoint->dispatcher, image);
 }
 
 int aeron_receive_channel_endpoint_on_remove_publication_image(
     aeron_receive_channel_endpoint_t *endpoint, aeron_publication_image_t *image)
 {
+    for (size_t i = 0, len = endpoint->destinations.length; i < len; i++)
+    {
+        aeron_receive_destination_t *destination = endpoint->destinations.array[i].destination;
+
+        if (aeron_udp_channel_interceptors_image_notifications(
+            destination->data_paths,
+            &destination->transport,
+            image,
+            AERON_UDP_CHANNEL_INTERCEPTOR_REMOVE_NOTIFICATION) < 0)
+        {
+            return -1;
+        }
+    }
+
     return aeron_data_packet_dispatcher_remove_publication_image(&endpoint->dispatcher, image);
 }
 
@@ -769,6 +798,17 @@ int aeron_receive_channel_endpoint_add_poll_transports(
     for (size_t i = 0, len = endpoint->destinations.length; i < len; i++)
     {
         aeron_receive_destination_t *destination = endpoint->destinations.array[i].destination;
+
+        if (aeron_udp_channel_interceptors_transport_notifications(
+            destination->data_paths,
+            &destination->transport,
+            destination->conductor_fields.udp_channel,
+            &endpoint->dispatcher,
+            AERON_UDP_CHANNEL_INTERCEPTOR_ADD_NOTIFICATION) < 0)
+        {
+            return -1;
+        }
+
         if (endpoint->transport_bindings->poller_add_func(poller, &destination->transport))
         {
             return -1;
@@ -784,6 +824,17 @@ int aeron_receive_channel_endpoint_remove_poll_transports(
     for (size_t i = 0, len = endpoint->destinations.length; i < len; i++)
     {
         aeron_receive_destination_t *destination = endpoint->destinations.array[i].destination;
+
+        if (aeron_udp_channel_interceptors_transport_notifications(
+            destination->data_paths,
+            &destination->transport,
+            destination->conductor_fields.udp_channel,
+            &endpoint->dispatcher,
+            AERON_UDP_CHANNEL_INTERCEPTOR_REMOVE_NOTIFICATION) < 0)
+        {
+            return -1;
+        }
+
         if (endpoint->transport_bindings->poller_remove_func(poller, &destination->transport))
         {
             return -1;
@@ -805,21 +856,15 @@ int aeron_receive_channel_endpoint_add_pending_setup_destination(
         if (aeron_driver_receiver_add_pending_setup(
             receiver, endpoint, destination, 0, 0, &udp_channel->local_control) < 0)
         {
-            aeron_set_err(-1, "receiver on_add_endpoint: %s", aeron_errmsg());
+            aeron_set_err_from_last_err_code("receiver on_add_endpoint: %s", aeron_errmsg());
             return -1;
         }
 
         if (aeron_receive_channel_endpoint_send_sm(
-            endpoint,
-            &destination->current_control_addr,
-            0,
-            0,
-            0,
-            0,
-            0,
-            AERON_STATUS_MESSAGE_HEADER_SEND_SETUP_FLAG) < 0)
+            endpoint, &destination->current_control_addr, 0, 0, 0, 0, 0, AERON_STATUS_MESSAGE_HEADER_SEND_SETUP_FLAG) < 0)
         {
-            aeron_set_err(-1, "aeron_receive_channel_endpoint_add_pending_setup send SM: %s", aeron_errmsg());
+            aeron_set_err_from_last_err_code(
+                "aeron_receive_channel_endpoint_add_pending_setup send SM: %s", aeron_errmsg());
             return -1;
         }
 

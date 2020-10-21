@@ -36,12 +36,15 @@ import static org.agrona.BitUtil.SIZE_OF_LONG;
  */
 public class CorrelatedMessageFlyweight
 {
-    public static final int CLIENT_ID_FIELD_OFFSET = 0;
-    public static final int CORRELATION_ID_FIELD_OFFSET = CLIENT_ID_FIELD_OFFSET + SIZE_OF_LONG;
+    /**
+     * Length of the header.
+     */
     public static final int LENGTH = 2 * SIZE_OF_LONG;
+    private static final int CLIENT_ID_FIELD_OFFSET = 0;
+    static final int CORRELATION_ID_FIELD_OFFSET = CLIENT_ID_FIELD_OFFSET + SIZE_OF_LONG;
 
-    protected MutableDirectBuffer buffer;
-    protected int offset;
+    MutableDirectBuffer buffer;
+    int offset;
 
     /**
      * Wrap the buffer at a given offset for updates.
@@ -59,9 +62,9 @@ public class CorrelatedMessageFlyweight
     }
 
     /**
-     * return client id field
+     * Get client id field.
      *
-     * @return client id field
+     * @return client id field.
      */
     public long clientId()
     {
@@ -72,7 +75,7 @@ public class CorrelatedMessageFlyweight
      * set client id field
      *
      * @param clientId field value
-     * @return for fluent API
+     * @return this for a fluent API.
      */
     public CorrelatedMessageFlyweight clientId(final long clientId)
     {
@@ -82,9 +85,9 @@ public class CorrelatedMessageFlyweight
     }
 
     /**
-     * return correlation id field
+     * Get correlation id field.
      *
-     * @return correlation id field
+     * @return correlation id field.
      */
     public long correlationId()
     {
@@ -92,10 +95,10 @@ public class CorrelatedMessageFlyweight
     }
 
     /**
-     * set correlation id field
+     * Set correlation id field.
      *
-     * @param correlationId field value
-     * @return for fluent API
+     * @param correlationId field value.
+     * @return this for a fluent API.
      */
     public CorrelatedMessageFlyweight correlationId(final long correlationId)
     {

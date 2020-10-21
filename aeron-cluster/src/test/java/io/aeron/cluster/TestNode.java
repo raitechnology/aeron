@@ -32,9 +32,9 @@ import io.aeron.logbuffer.Header;
 import io.aeron.test.DataCollector;
 import org.agrona.CloseHelper;
 import org.agrona.DirectBuffer;
-import org.agrona.ExpandableArrayBuffer;
 import org.agrona.LangUtil;
 import org.agrona.concurrent.AgentTerminationException;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.status.CountersReader;
 
 import java.io.File;
@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static io.aeron.Aeron.NULL_VALUE;
 import static io.aeron.archive.client.AeronArchive.NULL_POSITION;
+import static org.agrona.BitUtil.SIZE_OF_INT;
 import static org.junit.jupiter.api.Assertions.fail;
 
 class TestNode implements AutoCloseable
@@ -178,15 +179,15 @@ class TestNode implements AutoCloseable
         return Cluster.Role.get(counter);
     }
 
-    Election.State electionState()
+    ElectionState electionState()
     {
         final Counter counter = clusteredMediaDriver.consensusModule().context().electionStateCounter();
         if (counter.isClosed())
         {
-            return Election.State.CLOSED;
+            return ElectionState.CLOSED;
         }
 
-        return Election.State.get(counter);
+        return ElectionState.get(counter);
     }
 
     ConsensusModule.State moduleState()
@@ -451,8 +452,9 @@ class TestNode implements AutoCloseable
 
         public void onTakeSnapshot(final ExclusivePublication snapshotPublication)
         {
-            final ExpandableArrayBuffer buffer = new ExpandableArrayBuffer(SNAPSHOT_MSG_LENGTH);
+            final UnsafeBuffer buffer = new UnsafeBuffer(new byte[SNAPSHOT_MSG_LENGTH]);
             buffer.putInt(0, messageCount);
+            buffer.putInt(SNAPSHOT_MSG_LENGTH - SIZE_OF_INT, messageCount);
 
             for (int i = 0; i < SNAPSHOT_FRAGMENT_COUNT; i++)
             {

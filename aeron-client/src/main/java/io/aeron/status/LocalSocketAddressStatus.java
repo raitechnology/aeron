@@ -15,7 +15,10 @@
  */
 package io.aeron.status;
 
-import org.agrona.*;
+import io.aeron.AeronCounters;
+import org.agrona.BitUtil;
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.status.AtomicCounter;
 import org.agrona.concurrent.status.CountersManager;
@@ -26,6 +29,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.agrona.concurrent.status.CountersReader.RECORD_ALLOCATED;
+import static org.agrona.concurrent.status.CountersReader.RECORD_UNUSED;
 
 /**
  * Counter used to store the status of a bind address and port for the local end of a channel.
@@ -50,13 +54,15 @@ public class LocalSocketAddressStatus
     /**
      * Type of the counter used to track a local socket address and port.
      */
-    public static final int LOCAL_SOCKET_ADDRESS_STATUS_TYPE_ID = 14;
+    public static final int LOCAL_SOCKET_ADDRESS_STATUS_TYPE_ID =
+        AeronCounters.DRIVER_LOCAL_SOCKET_ADDRESS_STATUS_TYPE_ID;
 
     /**
      * Allocate a counter to represent a local socket address associated with a channel.
      *
      * @param tempBuffer      for building up the key and label.
      * @param countersManager which will allocate the counter.
+     * @param registrationId  of the action the counter is associated with.
      * @param channelStatusId with which the new counter is associated.
      * @param name            for the counter to put in the label.
      * @param typeId          to categorise the counter.
@@ -65,6 +71,7 @@ public class LocalSocketAddressStatus
     public static AtomicCounter allocate(
         final MutableDirectBuffer tempBuffer,
         final CountersManager countersManager,
+        final long registrationId,
         final int channelStatusId,
         final String name,
         final int typeId)
@@ -80,7 +87,12 @@ public class LocalSocketAddressStatus
         labelLength += tempBuffer.putIntAscii(keyLength + labelLength, channelStatusId);
         labelLength += tempBuffer.putStringWithoutLengthAscii(keyLength + labelLength, " ");
 
-        return countersManager.newCounter(typeId, tempBuffer, 0, keyLength, tempBuffer, keyLength, labelLength);
+        final AtomicCounter counter = countersManager.newCounter(
+            typeId, tempBuffer, 0, keyLength, tempBuffer, keyLength, labelLength);
+
+        countersManager.setCounterRegistrationId(counter.id(), registrationId);
+
+        return counter;
     }
 
     /**
@@ -129,25 +141,84 @@ public class LocalSocketAddressStatus
 
         for (int i = 0, size = countersReader.maxCounterId(); i < size; i++)
         {
-            if (countersReader.getCounterState(i) == RECORD_ALLOCATED &&
-                countersReader.getCounterTypeId(i) == LOCAL_SOCKET_ADDRESS_STATUS_TYPE_ID)
+            final int counterState = countersReader.getCounterState(i);
+            if (RECORD_ALLOCATED == counterState)
             {
-                final int recordOffset = CountersReader.metaDataOffset(i);
-                final int keyIndex = recordOffset + CountersReader.KEY_OFFSET;
-
-                if (channelStatusId == buffer.getInt(keyIndex + CHANNEL_STATUS_ID_OFFSET) &&
-                    ChannelEndpointStatus.ACTIVE == countersReader.getCounterValue(i))
+                if (countersReader.getCounterTypeId(i) == LOCAL_SOCKET_ADDRESS_STATUS_TYPE_ID)
                 {
-                    final int length = buffer.getInt(keyIndex + LOCAL_SOCKET_ADDRESS_LENGTH_OFFSET);
-                    if (length > 0)
+                    final int recordOffset = CountersReader.metaDataOffset(i);
+                    final int keyIndex = recordOffset + CountersReader.KEY_OFFSET;
+
+                    if (channelStatusId == buffer.getInt(keyIndex + CHANNEL_STATUS_ID_OFFSET) &&
+                        ChannelEndpointStatus.ACTIVE == countersReader.getCounterValue(i))
                     {
-                        bindings.add(buffer.getStringWithoutLengthAscii(
-                            keyIndex + LOCAL_SOCKET_ADDRESS_STRING_OFFSET, length));
+                        final int length = buffer.getInt(keyIndex + LOCAL_SOCKET_ADDRESS_LENGTH_OFFSET);
+                        if (length > 0)
+                        {
+                            bindings.add(buffer.getStringWithoutLengthAscii(
+                                keyIndex + LOCAL_SOCKET_ADDRESS_STRING_OFFSET, length));
+                        }
                     }
                 }
+            }
+            else if (RECORD_UNUSED == counterState)
+            {
+                break;
             }
         }
 
         return bindings;
+    }
+
+    /**
+     * Find the currently bound socket address for the channel. There is an expectation that only one exists when
+     * searching.
+     *
+     * @param countersReader  for the connected driver.
+     * @param channelStatus   value for the channel which aggregates the transports.
+     * @param channelStatusId identity of the counter for the channel which aggregates the transports.
+     * @return the endpoint representing the bound socket address or null if not found.
+     */
+    public static String findAddress(
+        final CountersReader countersReader, final long channelStatus, final int channelStatusId)
+    {
+        String endpoint = null;
+
+        if (channelStatus == ChannelEndpointStatus.ACTIVE)
+        {
+            final DirectBuffer buffer = countersReader.metaDataBuffer();
+
+            for (int i = 0, size = countersReader.maxCounterId(); i < size; i++)
+            {
+                final int counterState = countersReader.getCounterState(i);
+                if (RECORD_ALLOCATED == counterState)
+                {
+                    if (countersReader.getCounterTypeId(i) == LOCAL_SOCKET_ADDRESS_STATUS_TYPE_ID)
+                    {
+                        final int recordOffset = CountersReader.metaDataOffset(i);
+                        final int keyIndex = recordOffset + CountersReader.KEY_OFFSET;
+
+                        if (channelStatusId == buffer.getInt(keyIndex + CHANNEL_STATUS_ID_OFFSET) &&
+                            ChannelEndpointStatus.ACTIVE == countersReader.getCounterValue(i))
+                        {
+                            final int length = buffer.getInt(keyIndex + LOCAL_SOCKET_ADDRESS_LENGTH_OFFSET);
+                            if (length > 0)
+                            {
+                                endpoint = buffer.getStringWithoutLengthAscii(
+                                    keyIndex + LOCAL_SOCKET_ADDRESS_STRING_OFFSET, length);
+                            }
+
+                            break;
+                        }
+                    }
+                }
+                else if (RECORD_UNUSED == counterState)
+                {
+                    break;
+                }
+            }
+        }
+
+        return endpoint;
     }
 }

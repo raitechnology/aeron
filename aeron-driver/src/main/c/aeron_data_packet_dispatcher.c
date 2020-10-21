@@ -15,7 +15,6 @@
  */
 
 #include <inttypes.h>
-#include <string.h>
 #include "util/aeron_error.h"
 #include "aeron_publication_image.h"
 #include "aeron_driver_receiver.h"
@@ -181,7 +180,7 @@ int aeron_data_packet_dispatcher_remove_subscription(aeron_data_packet_dispatche
 
     if ((stream_interest = aeron_int64_to_ptr_hash_map_get(&dispatcher->session_by_stream_id_map, stream_id)) == NULL)
     {
-        aeron_set_err(-1, "No subscription for stream: %" PRIi32, stream_id);
+        aeron_set_err(EINVAL, "No subscription for stream: %" PRIi32, stream_id);
         return -1;
     }
 
@@ -206,7 +205,7 @@ int aeron_data_packet_dispatcher_remove_subscription_by_session(
 
     if ((stream_interest = aeron_int64_to_ptr_hash_map_get(&dispatcher->session_by_stream_id_map, stream_id)) == NULL)
     {
-        aeron_set_err(-1, "No subscription for stream: %" PRIi32, stream_id);
+        aeron_set_err(EINVAL, "No subscription for stream: %" PRIi32, stream_id);
         return -1;
     }
 
@@ -272,9 +271,38 @@ int aeron_data_packet_dispatcher_remove_publication_image(
     return 0;
 }
 
+bool aeron_data_packet_dispatcher_has_interest_in(
+    aeron_data_packet_dispatcher_t *dispatcher, int32_t stream_id, int32_t session_id)
+{
+    aeron_data_packet_dispatcher_stream_interest_t *stream_interest =
+        aeron_int64_to_ptr_hash_map_get(&dispatcher->session_by_stream_id_map, stream_id);
+
+    if (NULL == stream_interest)
+    {
+        return false;
+    }
+
+    aeron_publication_image_t *image = NULL;
+    const bool found = aeron_int64_to_tagged_ptr_hash_map_get(
+        &stream_interest->image_by_session_id_map, session_id, NULL, (void **)&image);
+
+    if (NULL != image)
+    {
+        return true;
+    }
+    else if (!found)
+    {
+        if (aeron_data_packet_dispatcher_stream_interest_for_session(stream_interest, session_id))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static void aeron_data_packet_dispatcher_mark_as_no_interest_to_prevent_repeated_hash_lookups(
-    aeron_int64_to_tagged_ptr_hash_map_t *image_by_session_id_map,
-    int32_t session_id)
+    aeron_int64_to_tagged_ptr_hash_map_t *image_by_session_id_map, int32_t session_id)
 {
     // This is here as an optimisation so that streams that we don't care about don't trigger the slow
     // path and require checking for interest.  As it is an optimisation, we are ignoring the possible
@@ -493,10 +521,7 @@ int aeron_data_packet_dispatcher_elicit_setup_from_source(
 }
 
 extern int aeron_data_packet_dispatcher_remove_with_state(
-    aeron_data_packet_dispatcher_t *dispatcher,
-    int32_t session_id,
-    int32_t stream_id,
-    uint32_t image_state);
+    aeron_data_packet_dispatcher_t *dispatcher, int32_t session_id, int32_t stream_id, uint32_t image_state);
 
 extern int aeron_data_packet_dispatcher_remove_pending_setup(
     aeron_data_packet_dispatcher_t *dispatcher, int32_t session_id, int32_t stream_id);

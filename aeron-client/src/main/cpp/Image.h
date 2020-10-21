@@ -17,18 +17,17 @@
 #ifndef AERON_IMAGE_H
 #define AERON_IMAGE_H
 
-#include <concurrent/AtomicBuffer.h>
-#include <concurrent/logbuffer/LogBufferDescriptor.h>
-#include <concurrent/logbuffer/FrameDescriptor.h>
-#include <concurrent/logbuffer/Header.h>
-#include <concurrent/logbuffer/TermReader.h>
-#include <concurrent/logbuffer/TermBlockScanner.h>
-#include <concurrent/status/UnsafeBufferPosition.h>
 #include <algorithm>
 #include <array>
 #include <vector>
 #include <atomic>
 #include <cassert>
+#include "concurrent/logbuffer/LogBufferDescriptor.h"
+#include "concurrent/logbuffer/FrameDescriptor.h"
+#include "concurrent/logbuffer/Header.h"
+#include "concurrent/logbuffer/TermReader.h"
+#include "concurrent/logbuffer/TermBlockScanner.h"
+#include "concurrent/status/UnsafeBufferPosition.h"
 #include "LogBuffers.h"
 
 namespace aeron
@@ -111,7 +110,7 @@ public:
         const std::string &sourceIdentity,
         UnsafeBufferPosition &subscriberPosition,
         std::shared_ptr<LogBuffers> logBuffers,
-        const exception_handler_t &exceptionHandler) :
+        const util::exception_handler_t &exceptionHandler) :
         m_sourceIdentity(sourceIdentity),
         m_logBuffers(std::move(logBuffers)),
         m_exceptionHandler(exceptionHandler),
@@ -120,7 +119,6 @@ public:
             LogBufferDescriptor::initialTermId(m_logBuffers->atomicBuffer(LogBufferDescriptor::LOG_META_DATA_SECTION_INDEX)),
             m_logBuffers->atomicBuffer(0).capacity(),
             this),
-        m_isClosed(false),
         m_sessionId(sessionId),
         m_subscriptionRegistrationId(subscriptionRegistrationId),
         m_correlationId(correlationId)
@@ -136,7 +134,6 @@ public:
         m_finalPosition = m_joinPosition;
         m_termLengthMask = capacity - 1;
         m_positionBitsToShift = BitUtil::numberOfTrailingZeroes(capacity);
-        m_isEos = false;
     }
 
     Image(const Image &image) :
@@ -801,7 +798,7 @@ public:
     template<typename F>
     inline int blockPoll(F &&blockHandler, int blockLengthLimit)
     {
-        if (!isClosed())
+        if (isClosed())
         {
             return 0;
         }
@@ -854,12 +851,12 @@ public:
 private:
     std::string m_sourceIdentity;
     std::shared_ptr<LogBuffers> m_logBuffers;
-    exception_handler_t m_exceptionHandler;
+    util::exception_handler_t m_exceptionHandler;
     std::array<AtomicBuffer, LogBufferDescriptor::PARTITION_COUNT> m_termBuffers;
     Position<UnsafeBufferPosition> m_subscriberPosition;
     Header m_header;
-    std::atomic<bool> m_isClosed;
-    bool m_isEos;
+    std::atomic<bool> m_isClosed = { false };
+    bool m_isEos = false;
 
     std::int32_t m_termLengthMask;
     std::int32_t m_positionBitsToShift;

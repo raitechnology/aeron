@@ -79,19 +79,15 @@ public class ClusterControl
 
         private final int code;
 
-        private static final ToggleState[] STATES;
-        static
-        {
-            final ToggleState[] toggleStates = values();
-            STATES = new ToggleState[toggleStates.length];
-            for (final ToggleState toggleState : toggleStates)
-            {
-                STATES[toggleState.code()] = toggleState;
-            }
-        }
+        private static final ToggleState[] STATES = values();
 
         ToggleState(final int code)
         {
+            if (code != ordinal())
+            {
+                throw new IllegalArgumentException(name() + " - code must equal ordinal value: code=" + code);
+            }
+
             this.code = code;
         }
 
@@ -181,7 +177,7 @@ public class ClusterControl
     /**
      * Counter type id for the control toggle.
      */
-    public static final int CONTROL_TOGGLE_TYPE_ID = 202;
+    public static final int CONTROL_TOGGLE_TYPE_ID = AeronCounters.CLUSTER_CONTROL_TOGGLE_TYPE_ID;
 
     /**
      * Map a {@link CountersReader} over the provided {@link File} for the CnC file.

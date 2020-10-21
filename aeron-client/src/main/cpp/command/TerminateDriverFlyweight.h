@@ -20,7 +20,7 @@
 #include <cstdint>
 #include <string>
 #include <cstddef>
-#include <util/BitUtil.h>
+#include "util/BitUtil.h"
 #include "CorrelatedMessageFlyweight.h"
 
 namespace aeron { namespace command
@@ -63,7 +63,7 @@ public:
     {
     }
 
-    inline const uint8_t *tokenBuffer() const
+    inline const std::uint8_t *tokenBuffer() const
     {
         return bytesAt(sizeof(TerminateDriverDefn));
     }
@@ -73,7 +73,7 @@ public:
         return m_struct.tokenLength;
     }
 
-    inline this_t &tokenBuffer(const uint8_t *tokenBuffer, size_t tokenLength)
+    inline this_t &tokenBuffer(const std::uint8_t *tokenBuffer, std::size_t tokenLength)
     {
         m_struct.tokenLength = static_cast<std::int32_t>(tokenLength);
 
@@ -87,7 +87,7 @@ public:
 
     inline util::index_t length() const
     {
-        return sizeof(TerminateDriverDefn) + m_struct.tokenLength;
+        return static_cast<util::index_t>(sizeof(TerminateDriverDefn) + m_struct.tokenLength);
     }
 
 private:

@@ -32,23 +32,58 @@ import static java.nio.ByteOrder.LITTLE_ENDIAN;
 // CHECKSTYLE:ON:LineLength
 public class NakFlyweight extends HeaderFlyweight
 {
+    /**
+     * Length of the frame in bytes.
+     */
     public static final int HEADER_LENGTH = 28;
 
+    /**
+     * Offset in the frame at which the session-id field begins.
+     */
     private static final int SESSION_ID_FIELD_OFFSET = 8;
+
+    /**
+     * Offset in the frame at which the stream-id field begins.
+     */
     private static final int STREAM_ID_FIELD_OFFSET = 12;
+
+    /**
+     * Offset in the frame at which the term-id field begins.
+     */
     private static final int TERM_ID_FIELD_OFFSET = 16;
+
+    /**
+     * Offset in the frame at which the term-offset field begins.
+     */
     private static final int TERM_OFFSET_FIELD_OFFSET = 20;
+
+    /**
+     * Offset in the frame at which the length of the NAK range field begins.
+     */
     private static final int LENGTH_FIELD_OFFSET = 24;
 
+    /**
+     * Default constructor which can later be use to wrap a frame.
+     */
     public NakFlyweight()
     {
     }
 
+    /**
+     * Construct the flyweight over a frame.
+     *
+     * @param buffer containing the frame.
+     */
     public NakFlyweight(final ByteBuffer buffer)
     {
         super(buffer);
     }
 
+    /**
+     * Construct the flyweight over a frame.
+     *
+     * @param buffer containing the frame.
+     */
     public NakFlyweight(final UnsafeBuffer buffer)
     {
         super(buffer);

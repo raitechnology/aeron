@@ -28,19 +28,19 @@ import java.util.Map;
  */
 public abstract class SubscriptionLink implements DriverManagedResource
 {
-    protected final long registrationId;
-    protected final int streamId;
-    protected final int sessionId;
-    protected final boolean hasSessionId;
-    protected final boolean isSparse;
-    protected final boolean isTether;
-    protected boolean reachedEndOfLife = false;
-    protected final CommonContext.InferableBoolean group;
-    protected final String channel;
-    protected final AeronClient aeronClient;
-    protected final IdentityHashMap<Subscribable, ReadablePosition> positionBySubscribableMap;
+    final long registrationId;
+    final int streamId;
+    final int sessionId;
+    final boolean hasSessionId;
+    final boolean isSparse;
+    final boolean isTether;
+    boolean reachedEndOfLife = false;
+    final CommonContext.InferableBoolean group;
+    final String channel;
+    final AeronClient aeronClient;
+    final IdentityHashMap<Subscribable, ReadablePosition> positionBySubscribableMap;
 
-    protected SubscriptionLink(
+    SubscriptionLink(
         final long registrationId,
         final int streamId,
         final String channel,
@@ -58,6 +58,11 @@ public abstract class SubscriptionLink implements DriverManagedResource
         this.group = params.group;
 
         positionBySubscribableMap = new IdentityHashMap<>(hasSessionId ? 1 : 8);
+    }
+
+    public AeronClient aeronClient()
+    {
+        return aeronClient;
     }
 
     public final long registrationId()
@@ -341,7 +346,6 @@ class UntetheredSubscription
         timeOfLastUpdateNs = nowNs;
     }
 
-    @SuppressWarnings("unused")
     void stateChange(
         final State oldState,
         final State newState,

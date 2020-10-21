@@ -17,11 +17,10 @@
 #ifndef AERON_DRIVER_CONTEXT_H
 #define AERON_DRIVER_CONTEXT_H
 
-#include <concurrent/aeron_distinct_error_log.h>
-#include <media/aeron_udp_channel_transport_bindings.h>
+#include "concurrent/aeron_distinct_error_log.h"
+#include "media/aeron_udp_channel_transport_bindings.h"
 #include "aeron_driver_common.h"
 #include "aeronmd.h"
-#include "util/aeron_bitutil.h"
 #include "util/aeron_fileutil.h"
 #include "concurrent/aeron_spsc_concurrent_array_queue.h"
 #include "concurrent/aeron_mpsc_concurrent_array_queue.h"
@@ -37,17 +36,32 @@
 
 #define AERON_COMMAND_QUEUE_CAPACITY (256)
 
+#define AERON_DRIVER_SENDER_NUM_RECV_BUFFERS (2)
+
+#define AERON_NETWORK_PUBLICATION_MAX_MESSAGES_PER_SEND (2)
+
+#define AERON_DRIVER_RECEIVER_NUM_RECV_BUFFERS (2)
+#define AERON_DRIVER_RECEIVER_MAX_UDP_PACKET_LENGTH (64 * 1024)
+
 typedef struct aeron_driver_conductor_stct aeron_driver_conductor_t;
 
 typedef struct aeron_driver_conductor_proxy_stct aeron_driver_conductor_proxy_t;
 typedef struct aeron_driver_sender_proxy_stct aeron_driver_sender_proxy_t;
 typedef struct aeron_driver_receiver_proxy_stct aeron_driver_receiver_proxy_t;
+typedef struct aeron_dl_loaded_libs_state_stct aeron_dl_loaded_libs_state_t;
 
 typedef aeron_rb_handler_t aeron_driver_conductor_to_driver_interceptor_func_t;
 typedef void (*aeron_driver_conductor_to_client_interceptor_func_t)(
     aeron_driver_conductor_t *conductor, int32_t msg_type_id, const void *message, size_t length);
 
-#define AERON_THREADING_MODE_IS_SHARED_OR_INVOKER(m) (AERON_THREADING_MODE_SHARED == m || AERON_THREADING_MODE_INVOKER == m)
+#define AERON_THREADING_MODE_IS_SHARED_OR_INVOKER(m) (AERON_THREADING_MODE_SHARED == (m) || AERON_THREADING_MODE_INVOKER == (m))
+
+typedef struct aeron_driver_context_bindings_clientd_entry_stct
+{
+    const char *name;
+    void *clientd;
+}
+aeron_driver_context_bindings_clientd_entry_t;
 
 typedef struct aeron_driver_context_stct
 {
@@ -64,12 +78,13 @@ typedef struct aeron_driver_context_stct
     bool reliable_stream;                                   /* aeron.reliable.stream = true */
     bool tether_subscriptions;                              /* aeron.tether.subscriptions = true */
     bool rejoin_stream;                                     /* aeron.rejoin.stream = true */
+    bool ats_enabled;
     uint64_t driver_timeout_ms;                             /* aeron.driver.timeout = 10s */
-    uint64_t client_liveness_timeout_ns;                    /* aeron.client.liveness.timeout = 5s */
+    uint64_t client_liveness_timeout_ns;                    /* aeron.client.liveness.timeout = 10s */
     uint64_t publication_linger_timeout_ns;                 /* aeron.publication.linger.timeout = 5s */
     uint64_t status_message_timeout_ns;                     /* aeron.rcv.status.message.timeout = 200ms */
     uint64_t image_liveness_timeout_ns;                     /* aeron.image.liveness.timeout = 10s */
-    uint64_t publication_unblock_timeout_ns;                /* aeron.publication.unblock.timeout = 10s */
+    uint64_t publication_unblock_timeout_ns;                /* aeron.publication.unblock.timeout = 15s */
     uint64_t publication_connection_timeout_ns;             /* aeron.publication.connection.timeout = 5s */
     uint64_t timer_interval_ns;                             /* aeron.timer.interval = 1s */
     uint64_t counter_free_to_reuse_ns;                      /* aeron.counters.free.to.reuse.timeout = 1s */
@@ -98,7 +113,7 @@ typedef struct aeron_driver_context_stct
     size_t file_page_size;                                  /* aeron.file.page.size = 4KB */
     size_t nak_multicast_group_size;                        /* aeron.nak.multicast.group.size = 10 */
     int32_t publication_reserved_session_id_low;            /* aeron.publication.reserved.session.id.low = -1 */
-    int32_t publication_reserved_session_id_high;           /* aeron.publication.reserved.session.id.high = 10000 */
+    int32_t publication_reserved_session_id_high;           /* aeron.publication.reserved.session.id.high = 1000 */
     uint8_t multicast_ttl;                                  /* aeron.socket.multicast.ttl = 0 */
 
     struct                                                  /* aeron.receiver.receiver.tag = <unset> */
@@ -126,7 +141,7 @@ typedef struct aeron_driver_context_stct
 
     aeron_clock_func_t nano_clock;
     aeron_clock_func_t epoch_clock;
-    aeron_clock_cache_t* cached_clock;
+    aeron_clock_cache_t *cached_clock;
 
     aeron_spsc_concurrent_array_queue_t sender_command_queue;
     aeron_spsc_concurrent_array_queue_t receiver_command_queue;
@@ -161,8 +176,9 @@ typedef struct aeron_driver_context_stct
     const char *receiver_idle_strategy_name;
 
     aeron_usable_fs_space_func_t usable_fs_space_func;
-    aeron_map_raw_log_func_t map_raw_log_func;
-    aeron_map_raw_log_close_func_t map_raw_log_close_func;
+    aeron_raw_log_map_func_t raw_log_map_func;
+    aeron_raw_log_close_func_t raw_log_close_func;
+    aeron_raw_log_free_func_t raw_log_free_func;
 
     aeron_flow_control_strategy_supplier_func_t unicast_flow_control_supplier_func;
     aeron_flow_control_strategy_supplier_func_t multicast_flow_control_supplier_func;
@@ -179,6 +195,8 @@ typedef struct aeron_driver_context_stct
 
     aeron_driver_conductor_to_driver_interceptor_func_t to_driver_interceptor_func;
     aeron_driver_conductor_to_client_interceptor_func_t to_client_interceptor_func;
+
+    aeron_untethered_subscription_state_change_func_t untethered_subscription_state_change_func;
 
     aeron_driver_termination_validator_func_t termination_validator_func;
     void *termination_validator_state;
@@ -200,6 +218,10 @@ typedef struct aeron_driver_context_stct
     const char *resolver_bootstrap_neighbor;
     aeron_name_resolver_supplier_func_t name_resolver_supplier_func;
     const char *name_resolver_init_args;
+
+    aeron_dl_loaded_libs_state_t *dynamic_libs;
+    aeron_driver_context_bindings_clientd_entry_t *bindings_clientd_entries;
+    size_t num_bindings_clientd_entries;
 }
 aeron_driver_context_t;
 
@@ -210,9 +232,16 @@ void aeron_driver_context_print_configuration(aeron_driver_context_t *context);
 
 void aeron_driver_fill_cnc_metadata(aeron_driver_context_t *context);
 
+int aeron_driver_validate_unblock_timeout(aeron_driver_context_t *context);
+
+int aeron_driver_validate_untethered_timeouts(aeron_driver_context_t *context);
+
 int aeron_driver_context_validate_mtu_length(uint64_t mtu_length);
 
 size_t aeron_cnc_length(aeron_driver_context_t *context);
+
+int aeron_driver_context_bindings_clientd_create_entries(aeron_driver_context_t *context);
+int aeron_driver_context_bindings_clientd_delete_entries(aeron_driver_context_t *context);
 
 inline void aeron_cnc_version_signal_cnc_ready(aeron_cnc_metadata_t *metadata, int32_t cnc_version)
 {

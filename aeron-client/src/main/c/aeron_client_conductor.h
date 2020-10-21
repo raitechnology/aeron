@@ -46,7 +46,8 @@ typedef enum aeron_client_managed_resource_type_en
     AERON_CLIENT_TYPE_SUBSCRIPTION,
     AERON_CLIENT_TYPE_IMAGE,
     AERON_CLIENT_TYPE_LOGBUFFER,
-    AERON_CLIENT_TYPE_COUNTER
+    AERON_CLIENT_TYPE_COUNTER,
+    AERON_CLIENT_TYPE_DESTINATION
 }
 aeron_client_managed_resource_type_t;
 
@@ -67,6 +68,7 @@ typedef struct aeron_client_registering_resource_stct
         aeron_exclusive_publication_t *exclusive_publication;
         aeron_subscription_t *subscription;
         aeron_counter_t *counter;
+        aeron_client_command_base_t *base_resource;
     }
     resource;
 
@@ -156,6 +158,7 @@ typedef struct aeron_client_conductor_stct
 
     aeron_int64_to_ptr_hash_map_t log_buffer_by_id_map;
     aeron_int64_to_ptr_hash_map_t resource_by_id_map;
+    aeron_int64_to_ptr_hash_map_t image_by_id_map;
 
     struct available_counter_handlers_stct
     {
@@ -234,6 +237,7 @@ typedef struct aeron_client_conductor_stct
     bool invoker_mode;
     bool pre_touch;
     bool is_terminating;
+    bool is_closed;
 }
 aeron_client_conductor_t;
 
@@ -250,12 +254,21 @@ void aeron_client_conductor_on_cmd_close_publication(void *clientd, void *item);
 int aeron_client_conductor_async_add_publication(
     aeron_async_add_publication_t **async, aeron_client_conductor_t *conductor, const char *uri, int32_t stream_id);
 int aeron_client_conductor_async_close_publication(
-    aeron_client_conductor_t *conductor, aeron_publication_t *publication);
+    aeron_client_conductor_t *conductor,
+    aeron_publication_t *publication,
+    aeron_notification_t on_close_complete,
+    void *on_close_complete_clientd);
 
 int aeron_client_conductor_async_add_exclusive_publication(
-    aeron_async_add_exclusive_publication_t **async, aeron_client_conductor_t *conductor, const char *uri, int32_t stream_id);
+    aeron_async_add_exclusive_publication_t **async,
+    aeron_client_conductor_t *conductor,
+    const char *uri,
+    int32_t stream_id);
 int aeron_client_conductor_async_close_exclusive_publication(
-    aeron_client_conductor_t *conductor, aeron_exclusive_publication_t *publication);
+    aeron_client_conductor_t *conductor,
+    aeron_exclusive_publication_t *publication,
+    aeron_notification_t on_close_complete,
+    void *on_close_complete_clientd);
 
 int aeron_client_conductor_async_add_subscription(
     aeron_async_add_subscription_t **async,
@@ -267,7 +280,10 @@ int aeron_client_conductor_async_add_subscription(
     aeron_on_unavailable_image_t on_unavailable_image_handler,
     void *on_unavailable_image_clientd);
 int aeron_client_conductor_async_close_subscription(
-    aeron_client_conductor_t *conductor, aeron_subscription_t *subscription);
+    aeron_client_conductor_t *conductor,
+    aeron_subscription_t *subscription,
+    aeron_notification_t on_close_complete,
+    void *on_close_complete_clientd);
 
 int aeron_client_conductor_async_add_counter(
     aeron_async_add_counter_t **async,
@@ -278,7 +294,46 @@ int aeron_client_conductor_async_add_counter(
     const char *label_buffer,
     size_t label_buffer_length);
 int aeron_client_conductor_async_close_counter(
-    aeron_client_conductor_t *conductor, aeron_counter_t *counter);
+    aeron_client_conductor_t *conductor,
+    aeron_counter_t *counter,
+    aeron_notification_t on_close_complete,
+    void *on_close_complete_clientd);
+
+int aeron_client_conductor_async_add_publication_destination(
+    aeron_async_destination_t **async,
+    aeron_client_conductor_t *conductor,
+    aeron_publication_t *publication,
+    const char *uri);
+
+int aeron_client_conductor_async_remove_publication_destination(
+    aeron_async_destination_t **async,
+    aeron_client_conductor_t *conductor,
+    aeron_publication_t *publication,
+    const char *uri);
+
+int aeron_client_conductor_async_add_exclusive_publication_destination(
+    aeron_async_destination_t **async,
+    aeron_client_conductor_t *conductor,
+    aeron_exclusive_publication_t *publication,
+    const char *uri);
+
+int aeron_client_conductor_async_remove_exclusive_publication_destination(
+    aeron_async_destination_t **async,
+    aeron_client_conductor_t *conductor,
+    aeron_exclusive_publication_t *publication,
+    const char *uri);
+
+int aeron_client_conductor_async_add_subscription_destination(
+    aeron_async_destination_t **async,
+    aeron_client_conductor_t *conductor,
+    aeron_subscription_t *subscription,
+    const char *uri);
+
+int aeron_client_conductor_async_remove_subscription_destination(
+    aeron_async_destination_t **async,
+    aeron_client_conductor_t *conductor,
+    aeron_subscription_t *subscription,
+    const char *uri);
 
 int aeron_client_conductor_async_handler(aeron_client_conductor_t *conductor, aeron_client_handler_cmd_t *cmd);
 
@@ -287,6 +342,8 @@ int aeron_client_conductor_on_publication_ready(
     aeron_client_conductor_t *conductor, aeron_publication_buffers_ready_t *response);
 int aeron_client_conductor_on_subscription_ready(
     aeron_client_conductor_t *conductor, aeron_subscription_ready_t *response);
+int aeron_client_conductor_on_operation_success(
+    aeron_client_conductor_t *conductor, aeron_operation_succeeded_t *response);
 int aeron_client_conductor_on_available_image(
     aeron_client_conductor_t *conductor,
     aeron_image_buffers_ready_t *response,
@@ -294,18 +351,11 @@ int aeron_client_conductor_on_available_image(
     const char *log_file,
     int32_t source_identity_length,
     const char *source_identity);
-int aeron_client_conductor_on_unavailable_image(
-    aeron_client_conductor_t *conductor,
-    aeron_image_message_t *response);
-int aeron_client_conductor_on_counter_ready(
-    aeron_client_conductor_t *conductor,
-    aeron_counter_update_t *response);
+int aeron_client_conductor_on_unavailable_image(aeron_client_conductor_t *conductor, aeron_image_message_t *response);
+int aeron_client_conductor_on_counter_ready(aeron_client_conductor_t *conductor, aeron_counter_update_t *response);
 int aeron_client_conductor_on_unavailable_counter(
-    aeron_client_conductor_t *conductor,
-    aeron_counter_update_t *response);
-int aeron_client_conductor_on_client_timeout(
-    aeron_client_conductor_t *conductor,
-    aeron_client_timeout_t *response);
+    aeron_client_conductor_t *conductor, aeron_counter_update_t *response);
+int aeron_client_conductor_on_client_timeout(aeron_client_conductor_t *conductor, aeron_client_timeout_t *response);
 
 int aeron_client_conductor_get_or_create_log_buffer(
     aeron_client_conductor_t *conductor,
@@ -313,9 +363,7 @@ int aeron_client_conductor_get_or_create_log_buffer(
     const char *log_file,
     int64_t original_registration_id,
     bool pre_touch);
-int aeron_client_conductor_release_log_buffer(
-    aeron_client_conductor_t *conductor,
-    aeron_log_buffer_t *log_buffer);
+int aeron_client_conductor_release_log_buffer(aeron_client_conductor_t *conductor, aeron_log_buffer_t *log_buffer);
 
 int aeron_client_conductor_linger_image(aeron_client_conductor_t *conductor, aeron_image_t *image);
 
@@ -323,12 +371,16 @@ int aeron_client_conductor_offer_remove_command(
     aeron_client_conductor_t *conductor, int64_t registration_id, int32_t command_type);
 
 int aeron_client_conductor_offer_destination_command(
-    aeron_client_conductor_t *conductor, int64_t registration_id, int32_t command_type, const char *uri);
+    aeron_client_conductor_t *conductor,
+    int64_t registration_id,
+    int32_t command_type,
+    const char *uri,
+    int64_t *correlation_id);
 
 inline int aeron_counter_heartbeat_timestamp_find_counter_id_by_registration_id(
     aeron_counters_reader_t *counters_reader, int32_t type_id, int64_t registration_id)
 {
-    for (size_t i = 0; i < counters_reader->max_counter_id; i++)
+    for (size_t i = 0, size = (size_t)counters_reader->max_counter_id; i < size; i++)
     {
         aeron_counter_metadata_descriptor_t *metadata = (aeron_counter_metadata_descriptor_t *)(
             counters_reader->metadata + AERON_COUNTER_METADATA_OFFSET(i));
@@ -377,6 +429,13 @@ inline void aeron_client_conductor_notify_close_handlers(aeron_client_conductor_
 
         pair->handler(pair->clientd);
     }
+}
+
+inline bool aeron_client_conductor_is_closed(aeron_client_conductor_t *conductor)
+{
+    bool is_closed;
+    AERON_GET_VOLATILE(is_closed, conductor->is_closed);
+    return is_closed;
 }
 
 #endif //AERON_C_CLIENT_CONDUCTOR_H

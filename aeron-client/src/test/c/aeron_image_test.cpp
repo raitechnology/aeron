@@ -35,6 +35,7 @@ extern "C"
 #define STREAM_ID (101)
 #define SESSION_ID (110)
 #define REGISTRATION_ID (27)
+#define SUBSCRIBER_POSITION_ID (49)
 
 #define INITIAL_TERM_ID (1234)
 
@@ -43,9 +44,7 @@ using namespace aeron::test;
 class ImageTest : public testing::Test
 {
 public:
-    ImageTest()
-    {
-    }
+    ImageTest() = default;
 
     ~ImageTest() override
     {
@@ -72,8 +71,16 @@ public:
         }
 
         if (aeron_image_create(
-            &image, nullptr, nullptr, log_buffer, &m_sub_pos, m_correlationId, (int32_t)m_correlationId,
-            "none", strlen("none")) < 0)
+            &image,
+            nullptr,
+            nullptr,
+            log_buffer,
+            SUBSCRIBER_POSITION_ID,
+            &m_sub_pos,
+            m_correlationId,
+            (int32_t)m_correlationId,
+            "none",
+            strlen("none")) < 0)
         {
             throw std::runtime_error("could not create image: " + std::string(aeron_errmsg()));
         }
@@ -115,8 +122,7 @@ public:
             STREAM_ID);
     }
 
-    static void fragment_handler(
-        void *clientd, const uint8_t *buffer, size_t length, aeron_header_t *header)
+    static void fragment_handler(void *clientd, const uint8_t *buffer, size_t length, aeron_header_t *header)
     {
         auto image = reinterpret_cast<ImageTest *>(clientd);
 
@@ -139,29 +145,29 @@ public:
         return AERON_ACTION_CONTINUE;
     }
 
-    template <typename F>
-    int imagePoll(F&& handler, size_t fragment_limit)
+    template<typename F>
+    int imagePoll(F &&handler, size_t fragment_limit)
     {
         m_handler = handler;
         return aeron_image_poll(m_image, fragment_handler, this, fragment_limit);
     }
 
-    template <typename F>
-    int imageControlledPoll(F&& handler, size_t fragment_limit)
+    template<typename F>
+    int imageControlledPoll(F &&handler, size_t fragment_limit)
     {
         m_controlled_handler = handler;
         return aeron_image_controlled_poll(m_image, controlled_fragment_handler, this, fragment_limit);
     }
 
-    template <typename F>
-    int imageBoundedPoll(F&& handler, int64_t max_position, size_t fragment_limit)
+    template<typename F>
+    int imageBoundedPoll(F &&handler, int64_t max_position, size_t fragment_limit)
     {
         m_handler = handler;
         return aeron_image_bounded_poll(m_image, fragment_handler, this, max_position, fragment_limit);
     }
 
-    template <typename F>
-    int imageBoundedControlledPoll(F&& handler, int64_t max_position, size_t fragment_limit)
+    template<typename F>
+    int imageBoundedControlledPoll(F &&handler, int64_t max_position, size_t fragment_limit)
     {
         m_controlled_handler = handler;
         return aeron_image_bounded_controlled_poll(
@@ -177,16 +183,16 @@ protected:
     int64_t m_correlationId = 0;
     int64_t m_sub_pos = 0;
 
-    int32_t m_term_length;
-    int32_t m_initial_term_id;
+    int32_t m_term_length = 0;
+    int32_t m_initial_term_id = 0;
 
-    size_t m_position_bits_to_shift;
+    size_t m_position_bits_to_shift = 0;
 
     std::function<void(const uint8_t *, size_t, aeron_header_t *)> m_handler = nullptr;
     std::function<aeron_controlled_fragment_handler_action_t(const uint8_t *, size_t, aeron_header_t *)>
         m_controlled_handler = nullptr;
 
-    aeron_image_t *m_image;
+    aeron_image_t *m_image = nullptr;
     std::string m_filename;
 };
 
@@ -235,9 +241,7 @@ TEST_F(ImageTest, shouldReadOneLimitedMessage)
     appendMessage(m_sub_pos, messageLength);
     appendMessage(m_sub_pos + alignedMessageLength, messageLength);
 
-    auto null_handler = [&](const uint8_t *, size_t length, aeron_header_t *header)
-    {
-    };
+    auto null_handler = [&](const uint8_t *, size_t length, aeron_header_t *header) {};
 
     EXPECT_EQ(imagePoll(null_handler, 1), 1);
 }
@@ -259,7 +263,7 @@ TEST_F(ImageTest, shouldReadMultipleMessages)
         handlerCallCount++;
     };
 
-    EXPECT_EQ(imagePoll(handler, std::numeric_limits<size_t>::max()),2);
+    EXPECT_EQ(imagePoll(handler, std::numeric_limits<size_t>::max()), 2);
     EXPECT_EQ(handlerCallCount, 2u);
     EXPECT_EQ(m_sub_pos, alignedMessageLength * 2);
 }
@@ -344,9 +348,7 @@ TEST_F(ImageTest, shouldReportCorrectPositionOnReception)
 
     appendMessage(m_sub_pos, messageLength);
 
-    auto handler = [&](const uint8_t *, size_t length, aeron_header_t *header)
-    {
-    };
+    auto handler = [&](const uint8_t *, size_t length, aeron_header_t *header) {};
 
     EXPECT_EQ(imagePoll(handler, std::numeric_limits<size_t>::max()), 1);
     EXPECT_EQ(m_sub_pos, alignedMessageLength);
@@ -475,13 +477,22 @@ TEST_F(ImageTest, shouldPollOneFragmentToControlledFragmentHandlerOnBreak)
 
     appendMessage(m_sub_pos, messageLength);
     appendMessage(m_sub_pos + alignedMessageLength, messageLength);
+    aeron_image_constants_t image_constants;
+    aeron_image_constants(m_image, &image_constants);
 
     auto handler = [&](const uint8_t *buffer, size_t length, aeron_header_t *header)
         -> aeron_controlled_fragment_handler_action_t
     {
+        aeron_header_values_t values;
+        aeron_header_values(header, &values);
+
         EXPECT_EQ(buffer, termBuffer(0) + AERON_DATA_HEADER_LENGTH);
         EXPECT_EQ(length, messageLength);
         EXPECT_EQ(header->frame->frame_header.type, AERON_HDR_TYPE_DATA);
+        EXPECT_EQ(values.frame.type, AERON_HDR_TYPE_DATA);
+        EXPECT_EQ(image_constants.initial_term_id, values.initial_term_id);
+        EXPECT_EQ(alignedMessageLength, aeron_header_position(header));
+
         return AERON_ACTION_BREAK;
     };
 
@@ -723,9 +734,7 @@ TEST_F(ImageTest, shouldPollFragmentsToBoundedFragmentHandlerWithMaxPositionBefo
     appendMessage(initialPosition, messageLength);
     appendMessage(initialPosition + alignedMessageLength, messageLength);
 
-    auto null_handler = [&](const uint8_t *, size_t length, aeron_header_t *header)
-    {
-    };
+    auto null_handler = [&](const uint8_t *, size_t length, aeron_header_t *header) {};
 
     EXPECT_EQ(imageBoundedPoll(null_handler, maxPosition, std::numeric_limits<size_t>::max()), 1);
     EXPECT_EQ(m_sub_pos, initialPosition + alignedMessageLength);

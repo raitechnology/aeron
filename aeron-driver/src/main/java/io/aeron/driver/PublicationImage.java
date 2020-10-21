@@ -30,10 +30,7 @@ import org.agrona.CloseHelper;
 import org.agrona.ErrorHandler;
 import org.agrona.collections.ArrayListUtil;
 import org.agrona.collections.ArrayUtil;
-import org.agrona.concurrent.CachedEpochClock;
-import org.agrona.concurrent.CachedNanoClock;
-import org.agrona.concurrent.NanoClock;
-import org.agrona.concurrent.UnsafeBuffer;
+import org.agrona.concurrent.*;
 import org.agrona.concurrent.status.AtomicCounter;
 import org.agrona.concurrent.status.Position;
 import org.agrona.concurrent.status.ReadablePosition;
@@ -51,7 +48,6 @@ import static io.aeron.logbuffer.TermGapFiller.tryFillGap;
 import static org.agrona.BitUtil.SIZE_OF_LONG;
 import static org.agrona.UnsafeAccess.UNSAFE;
 
-@SuppressWarnings("unused")
 class PublicationImagePadding1
 {
     byte p000, p001, p002, p003, p004, p005, p006, p007, p008, p009, p010, p011, p012, p013, p014, p015;
@@ -62,14 +58,13 @@ class PublicationImagePadding1
 
 class PublicationImageConductorFields extends PublicationImagePadding1
 {
-    protected long cleanPosition;
-    protected final ArrayList<UntetheredSubscription> untetheredSubscriptions = new ArrayList<>();
-    protected ReadablePosition[] subscriberPositions;
-    protected LossReport lossReport;
-    protected LossReport.ReportEntry reportEntry;
+    long cleanPosition;
+    final ArrayList<UntetheredSubscription> untetheredSubscriptions = new ArrayList<>();
+    ReadablePosition[] subscriberPositions;
+    LossReport lossReport;
+    LossReport.ReportEntry reportEntry;
 }
 
-@SuppressWarnings("unused")
 class PublicationImagePadding2 extends PublicationImageConductorFields
 {
     byte p064, p065, p066, p067, p068, p069, p070, p071, p072, p073, p074, p075, p076, p077, p078, p079;
@@ -80,12 +75,11 @@ class PublicationImagePadding2 extends PublicationImageConductorFields
 
 class PublicationImageReceiverFields extends PublicationImagePadding2
 {
-    protected boolean isEndOfStream = false;
-    protected long lastPacketTimestampNs;
-    protected ImageConnection[] imageConnections = new ImageConnection[1];
+    boolean isEndOfStream = false;
+    long timeOfLastPacketNs;
+    ImageConnection[] imageConnections = new ImageConnection[1];
 }
 
-@SuppressWarnings("unused")
 class PublicationImagePadding3 extends PublicationImageReceiverFields
 {
     byte p128, p129, p130, p131, p132, p133, p134, p135, p136, p137, p138, p139, p140, p142, p143, p144;
@@ -101,9 +95,26 @@ public class PublicationImage
     extends PublicationImagePadding3
     implements LossHandler, DriverManagedResource, Subscribable
 {
+    private static final long BEGIN_SM_CHANGE_OFFSET;
+    private static final long END_SM_CHANGE_OFFSET;
+
+    static
+    {
+        try
+        {
+            BEGIN_SM_CHANGE_OFFSET = UNSAFE.objectFieldOffset(
+                PublicationImage.class.getDeclaredField("beginSmChange"));
+            END_SM_CHANGE_OFFSET = UNSAFE.objectFieldOffset(PublicationImage.class.getDeclaredField("endSmChange"));
+        }
+        catch (final Exception ex)
+        {
+            throw new RuntimeException(ex);
+        }
+    }
+
     enum State
     {
-        INIT, ACTIVE, INACTIVE, LINGER, DONE
+        INIT, ACTIVE, DRAINING, LINGER, DONE
     }
 
     private volatile long beginSmChange = Aeron.NULL_VALUE;
@@ -160,9 +171,7 @@ public class PublicationImage
 
     public PublicationImage(
         final long correlationId,
-        final long imageLivenessTimeoutNs,
-        final long untetheredWindowLimitTimeoutNs,
-        final long untetheredRestingTimeoutNs,
+        final MediaDriver.Context ctx,
         final ReceiveChannelEndpoint channelEndpoint,
         final int transportIndex,
         final InetSocketAddress controlAddress,
@@ -176,19 +185,13 @@ public class PublicationImage
         final ArrayList<SubscriberPosition> subscriberPositions,
         final Position hwmPosition,
         final Position rebuildPosition,
-        final NanoClock nanoClock,
-        final CachedNanoClock cachedNanoClock,
-        final CachedEpochClock cachedEpochClock,
-        final SystemCounters systemCounters,
         final InetSocketAddress sourceAddress,
-        final CongestionControl congestionControl,
-        final LossReport lossReport,
-        final ErrorHandler errorHandler)
+        final CongestionControl congestionControl)
     {
         this.correlationId = correlationId;
-        this.imageLivenessTimeoutNs = imageLivenessTimeoutNs;
-        this.untetheredWindowLimitTimeoutNs = untetheredWindowLimitTimeoutNs;
-        this.untetheredRestingTimeoutNs = untetheredRestingTimeoutNs;
+        this.imageLivenessTimeoutNs = ctx.imageLivenessTimeoutNs();
+        this.untetheredWindowLimitTimeoutNs = ctx.untetheredWindowLimitTimeoutNs();
+        this.untetheredRestingTimeoutNs = ctx.untetheredRestingTimeoutNs();
         this.channelEndpoint = channelEndpoint;
         this.sessionId = sessionId;
         this.streamId = streamId;
@@ -198,20 +201,21 @@ public class PublicationImage
         this.sourceAddress = sourceAddress;
         this.initialTermId = initialTermId;
         this.congestionControl = congestionControl;
-        this.errorHandler = errorHandler;
-        this.lossReport = lossReport;
+        this.errorHandler = ctx.errorHandler();
+        this.lossReport = ctx.lossReport();
 
-        this.nanoClock = nanoClock;
-        this.cachedNanoClock = cachedNanoClock;
-        this.cachedEpochClock = cachedEpochClock;
+        this.nanoClock = ctx.nanoClock();
+        this.cachedNanoClock = ctx.cachedNanoClock();
+        this.cachedEpochClock = ctx.cachedEpochClock();
 
         final long nowNs = cachedNanoClock.nanoTime();
         this.timeOfLastStateChangeNs = nowNs;
-        this.lastPacketTimestampNs = nowNs;
+        this.timeOfLastPacketNs = nowNs;
 
         this.subscriberPositions = positionArray(subscriberPositions, nowNs);
         this.isReliable = subscriberPositions.get(0).subscription().isReliable();
 
+        final SystemCounters systemCounters = ctx.systemCounters();
         heartbeatsReceived = systemCounters.get(HEARTBEATS_RECEIVED);
         statusMessagesSent = systemCounters.get(STATUS_MESSAGES_SENT);
         nakMessagesSent = systemCounters.get(NAK_MESSAGES_SENT);
@@ -431,7 +435,7 @@ public class PublicationImage
     }
 
     /**
-     * Deactivate image by setting state to {@link State#INACTIVE} if currently {@link State#ACTIVE} from the
+     * Deactivate image by setting state to {@link State#DRAINING} if currently {@link State#ACTIVE} from the
      * {@link Receiver}.
      */
     void deactivate()
@@ -439,16 +443,10 @@ public class PublicationImage
         if (State.ACTIVE == state)
         {
             isRebuilding = false;
-            state(State.INACTIVE);
+            state(State.DRAINING);
         }
     }
 
-    /**
-     * Add a destination to this image so it can merge streams.
-     *
-     * @param transportIndex from which packets will arrive.
-     * @param transport      from which packets will arrive.
-     */
     void addDestination(final int transportIndex, final ReceiveDestinationTransport transport)
     {
         imageConnections = ArrayUtil.ensureCapacity(imageConnections, transportIndex + 1);
@@ -465,14 +463,10 @@ public class PublicationImage
         }
     }
 
-    /**
-     * Remove a destination to this image once merge is achieved.
-     *
-     * @param transportIndex from which packets arrive.
-     */
     void removeDestination(final int transportIndex)
     {
         imageConnections[transportIndex] = null;
+        updateActiveTransportCount();
     }
 
     void addDestinationConnectionIfUnknown(final int transportIndex, final InetSocketAddress remoteAddress)
@@ -574,7 +568,7 @@ public class PublicationImage
             if (!isFlowControlUnderRun(packetPosition))
             {
                 final long nowNs = cachedNanoClock.nanoTime();
-                lastPacketTimestampNs = nowNs;
+                timeOfLastPacketNs = nowNs;
                 trackConnection(transportIndex, srcAddress, nowNs);
 
                 if (isHeartbeat)
@@ -614,7 +608,7 @@ public class PublicationImage
     {
         boolean isActive = true;
 
-        if (((lastPacketTimestampNs + imageLivenessTimeoutNs) - nowNs < 0) ||
+        if (((timeOfLastPacketNs + imageLivenessTimeoutNs) - nowNs < 0) ||
             (isEndOfStream && rebuildPosition.getVolatile() >= hwmPosition.get()))
         {
             isActive = false;
@@ -741,9 +735,7 @@ public class PublicationImage
      * @param srcAddress     from the sender requesting the measurement
      */
     void onRttMeasurement(
-        final RttMeasurementFlyweight header,
-        @SuppressWarnings("unused") final int transportIndex,
-        final InetSocketAddress srcAddress)
+        final RttMeasurementFlyweight header, final int transportIndex, final InetSocketAddress srcAddress)
     {
         final long nowNs = nanoClock.nanoTime();
         final long rttInNs = nowNs - header.echoTimestampNs() - header.receptionDelta();
@@ -761,14 +753,16 @@ public class PublicationImage
         return subscriberPositions.length > 0 && (state == ACTIVE || state == INIT);
     }
 
-    /**
-     * The position up to which the current stream rebuild is complete for reception.
-     *
-     * @return the position up to which the current stream rebuild is complete for reception.
-     */
-    long rebuildPosition()
+    long joinPosition()
     {
-        return rebuildPosition.get();
+        long position = rebuildPosition.get();
+
+        for (final ReadablePosition subscriberPosition : subscriberPositions)
+        {
+            position = Math.min(subscriberPosition.getVolatile(), position);
+        }
+
+        return position;
     }
 
     /**
@@ -782,12 +776,12 @@ public class PublicationImage
                 checkUntetheredSubscriptions(timeNs, conductor);
                 break;
 
-            case INACTIVE:
+            case DRAINING:
                 if (isDrained())
                 {
-                    state = State.LINGER;
-                    timeOfLastStateChangeNs = timeNs;
                     conductor.transitionToLinger(this);
+                    timeOfLastStateChangeNs = timeNs;
+                    state = State.LINGER;
                 }
                 break;
 
@@ -914,13 +908,13 @@ public class PublicationImage
     private void scheduleStatusMessage(final long nowNs, final long smPosition, final int receiverWindowLength)
     {
         final long changeNumber = beginSmChange + 1;
-        beginSmChange = changeNumber;
+        UNSAFE.putOrderedLong(this, BEGIN_SM_CHANGE_OFFSET, changeNumber);
+        UNSAFE.storeFence();
 
         nextSmPosition = smPosition;
         nextSmReceiverWindowLength = receiverWindowLength;
 
-        endSmChange = changeNumber;
-
+        UNSAFE.putOrderedLong(this, END_SM_CHANGE_OFFSET, changeNumber);
         timeOfLastStatusMessageScheduleNs = nowNs;
     }
 
@@ -941,7 +935,7 @@ public class PublicationImage
             }
 
             final int windowLength = nextSmReceiverWindowLength;
-            final long untetheredWindowLimit = (maxConsumerPosition - windowLength) + (windowLength >> 3);
+            final long untetheredWindowLimit = (maxConsumerPosition - windowLength) + (windowLength >> 2);
 
             for (int lastIndex = untetheredSubscriptionsSize - 1, i = lastIndex; i >= 0; i--)
             {
@@ -976,7 +970,7 @@ public class PublicationImage
                             sessionId,
                             untethered.subscriptionLink,
                             untethered.position.id(),
-                            rebuildPosition.get(),
+                            joinPosition(),
                             rawLog.fileName(),
                             Configuration.sourceIdentity(sourceAddress));
                         untethered.state(UntetheredSubscription.State.ACTIVE, nowNs, streamId, sessionId);
@@ -993,13 +987,20 @@ public class PublicationImage
 
         for (final ImageConnection imageConnection : imageConnections)
         {
-            if (null != imageConnection && nowNs < (imageConnection.timeOfLastFrameNs + imageLivenessTimeoutNs))
+            if (null != imageConnection && ((imageConnection.timeOfLastFrameNs + imageLivenessTimeoutNs) - nowNs > 0))
             {
                 activeTransportCount++;
             }
         }
 
-        LogBufferDescriptor.activeTransportCount(rawLog.metaData(), activeTransportCount);
+        if (!rawLog.isInactive())
+        {
+            final UnsafeBuffer metaDataBuffer = rawLog.metaData();
+            if (metaDataBuffer.getInt(LOG_ACTIVE_TRANSPORT_COUNT) != activeTransportCount)
+            {
+                LogBufferDescriptor.activeTransportCount(metaDataBuffer, activeTransportCount);
+            }
+        }
     }
 
     private ReadablePosition[] positionArray(final ArrayList<SubscriberPosition> subscriberPositions, final long nowNs)

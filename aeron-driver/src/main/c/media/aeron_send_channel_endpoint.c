@@ -21,14 +21,10 @@
 
 #include <string.h>
 #include "aeron_socket.h"
-#include <uri/aeron_uri.h>
+#include "uri/aeron_uri.h"
 #include "aeron_driver_sender.h"
-#include "util/aeron_netutil.h"
 #include "aeron_driver_context.h"
-#include "concurrent/aeron_counters_manager.h"
-#include "util/aeron_error.h"
 #include "aeron_alloc.h"
-#include "media/aeron_send_channel_endpoint.h"
 #include "aeron_position.h"
 
 #if !defined(HAVE_STRUCT_MMSGHDR)
@@ -43,7 +39,8 @@ int aeron_send_channel_endpoint_create(
     aeron_send_channel_endpoint_t **endpoint,
     aeron_udp_channel_t *channel,
     aeron_driver_context_t *context,
-    aeron_counters_manager_t *counters_manager)
+    aeron_counters_manager_t *counters_manager,
+    int64_t registration_id)
 {
     aeron_send_channel_endpoint_t *_endpoint = NULL;
     char bind_addr_and_port[AERON_NETUTIL_FORMATTED_MAX_LENGTH];
@@ -87,15 +84,16 @@ int aeron_send_channel_endpoint_create(
 
     if (context->udp_channel_transport_bindings->init_func(
         &_endpoint->transport,
-        (channel->is_multicast) ? &channel->remote_control : &channel->local_control,
-        (channel->is_multicast) ? &channel->local_control : &channel->remote_control,
+        channel->is_multicast ? &channel->remote_control : &channel->local_control,
+        channel->is_multicast ? &channel->local_control : &channel->remote_control,
         channel->interface_index,
-        (0 != channel->multicast_ttl) ? channel->multicast_ttl : context->multicast_ttl,
+        0 != channel->multicast_ttl ? channel->multicast_ttl : context->multicast_ttl,
         context->socket_rcvbuf,
         context->socket_sndbuf,
         context,
         AERON_UDP_CHANNEL_TRANSPORT_AFFINITY_SENDER) < 0)
     {
+        aeron_set_err(aeron_errcode(), "%s: uri=%s", aeron_errmsg(), channel->original_uri);
         aeron_send_channel_endpoint_delete(counters_manager, _endpoint);
         return -1;
     }
@@ -114,21 +112,11 @@ int aeron_send_channel_endpoint_create(
         return -1;
     }
 
-    // TODO: Remove the update and just create in a single shot.
-    aeron_channel_endpoint_status_update_label(
-        counters_manager,
-        _endpoint->channel_status.counter_id,
-        AERON_COUNTER_SEND_CHANNEL_STATUS_NAME,
-        channel->uri_length,
-        channel->original_uri,
-        bind_addr_and_port_length,
-        bind_addr_and_port);
-
     _endpoint->transport.dispatch_clientd = _endpoint;
     _endpoint->has_sender_released = false;
 
     _endpoint->channel_status.counter_id = aeron_counter_send_channel_status_allocate(
-        counters_manager, channel->uri_length, channel->original_uri);
+        counters_manager, registration_id, channel->uri_length, channel->original_uri);
     _endpoint->channel_status.value_addr = aeron_counters_manager_addr(
         counters_manager, _endpoint->channel_status.counter_id);
 
@@ -138,9 +126,20 @@ int aeron_send_channel_endpoint_create(
         return -1;
     }
 
+    // TODO: Remove the update and just create in a single shot.
+    aeron_channel_endpoint_status_update_label(
+            counters_manager,
+            _endpoint->channel_status.counter_id,
+            AERON_COUNTER_SEND_CHANNEL_STATUS_NAME,
+            channel->uri_length,
+            channel->original_uri,
+            bind_addr_and_port_length,
+            bind_addr_and_port);
+
     _endpoint->local_sockaddr_indicator.counter_id = aeron_counter_local_sockaddr_indicator_allocate(
         counters_manager,
         AERON_COUNTER_SND_LOCAL_SOCKADDR_NAME,
+        registration_id,
         _endpoint->channel_status.counter_id,
         bind_addr_and_port);
 
@@ -282,6 +281,7 @@ int aeron_send_channel_endpoint_remove_publication(
 
 void aeron_send_channel_endpoint_dispatch(
     aeron_udp_channel_data_paths_t *data_paths,
+    aeron_udp_channel_transport_t *transport,
     void *sender_clientd,
     void *endpoint_clientd,
     void *destination_clientd,

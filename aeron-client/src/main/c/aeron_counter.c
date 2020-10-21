@@ -15,7 +15,6 @@
  */
 
 #include "aeron_counter.h"
-#include "util/aeron_error.h"
 
 int aeron_counter_create(
     aeron_counter_t **counter,
@@ -64,7 +63,23 @@ int64_t *aeron_counter_addr(aeron_counter_t *counter)
     return counter->counter_addr;
 }
 
-int aeron_counter_close(aeron_counter_t *counter)
+int aeron_counter_constants(aeron_counter_t *counter, aeron_counter_constants_t *constants)
+{
+    if (NULL == counter || NULL == constants)
+    {
+        errno = EINVAL;
+        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
+        return -1;
+    }
+
+    constants->registration_id = counter->registration_id;
+    constants->counter_id = counter->counter_id;
+
+    return 0;
+}
+
+int aeron_counter_close(
+    aeron_counter_t *counter, aeron_notification_t on_close_complete, void *on_close_complete_clientd)
 {
     if (NULL != counter)
     {
@@ -74,7 +89,8 @@ int aeron_counter_close(aeron_counter_t *counter)
         if (!is_closed)
         {
             AERON_PUT_ORDERED(counter->is_closed, true);
-            if (aeron_client_conductor_async_close_counter(counter->conductor, counter) < 0)
+            if (aeron_client_conductor_async_close_counter(
+                counter->conductor, counter, on_close_complete, on_close_complete_clientd) < 0)
             {
                 return -1;
             }
@@ -82,4 +98,15 @@ int aeron_counter_close(aeron_counter_t *counter)
     }
 
     return 0;
+}
+
+bool aeron_counter_is_closed(aeron_counter_t *counter)
+{
+    bool is_closed = false;
+    if (NULL != counter)
+    {
+        AERON_GET_VOLATILE(is_closed, counter->is_closed);
+    }
+
+    return is_closed;
 }

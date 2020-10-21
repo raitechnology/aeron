@@ -31,14 +31,12 @@ typedef enum aeron_network_publication_state_enum
     AERON_NETWORK_PUBLICATION_STATE_ACTIVE,
     AERON_NETWORK_PUBLICATION_STATE_DRAINING,
     AERON_NETWORK_PUBLICATION_STATE_LINGER,
-    AERON_NETWORK_PUBLICATION_STATE_CLOSING
+    AERON_NETWORK_PUBLICATION_STATE_DONE
 }
 aeron_network_publication_state_t;
 
 #define AERON_NETWORK_PUBLICATION_HEARTBEAT_TIMEOUT_NS (100 * 1000 * 1000LL)
 #define AERON_NETWORK_PUBLICATION_SETUP_TIMEOUT_NS (100 * 1000 * 1000LL)
-
-#define AERON_NETWORK_PUBLICATION_MAX_MESSAGES_PER_SEND (2)
 
 typedef struct aeron_send_channel_endpoint_stct aeron_send_channel_endpoint_t;
 typedef struct aeron_driver_conductor_stct aeron_driver_conductor_t;
@@ -101,7 +99,9 @@ typedef struct aeron_network_publication_stct
     bool is_end_of_stream;
     bool track_sender_limits;
     bool has_sender_released;
-    aeron_map_raw_log_close_func_t map_raw_log_close_func;
+    aeron_raw_log_close_func_t raw_log_close_func;
+    aeron_raw_log_free_func_t raw_log_free_func;
+    aeron_untethered_subscription_state_change_func_t untethered_subscription_state_change_func;
 
     int64_t *short_sends_counter;
     int64_t *heartbeats_sent_counter;
@@ -127,7 +127,6 @@ int aeron_network_publication_create(
     aeron_flow_control_strategy_t *flow_control_strategy,
     aeron_uri_publication_params_t *params,
     bool is_exclusive,
-    bool spies_simulate_connection,
     aeron_system_counters_t *system_counters);
 
 void aeron_network_publication_close(
@@ -213,7 +212,7 @@ inline int64_t aeron_network_publication_producer_position(aeron_network_publica
         publication->initial_term_id);
 }
 
-inline int64_t aeron_network_publication_consumer_position(aeron_network_publication_t *publication)
+inline int64_t aeron_network_publication_join_position(aeron_network_publication_t *publication)
 {
     return aeron_counter_get_volatile(publication->snd_pos_position.value_addr);
 }

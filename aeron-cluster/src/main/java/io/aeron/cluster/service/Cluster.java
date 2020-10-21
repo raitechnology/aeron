@@ -17,6 +17,8 @@ package io.aeron.cluster.service;
 
 import io.aeron.Aeron;
 import io.aeron.DirectBufferVector;
+import io.aeron.ExclusivePublication;
+import io.aeron.Image;
 import io.aeron.cluster.client.AeronCluster;
 import io.aeron.cluster.client.ClusterException;
 import io.aeron.cluster.codecs.CloseReason;
@@ -32,9 +34,19 @@ import java.util.function.Consumer;
 
 /**
  * Interface for a {@link ClusteredService} to interact with cluster hosting it.
+ * <p>
+ * This object should only be used to send messages to the cluster or schedule timers in response to other messages
+ * and timers. Sending messages and timers should not happen from cluster lifecycle methods like
+ * {@link ClusteredService#onStart(Cluster, Image)}, {@link ClusteredService#onRoleChange(Cluster.Role)} or
+ * {@link ClusteredService#onTakeSnapshot(ExclusivePublication)}, or {@link ClusteredService#onTerminate(Cluster)},
+ * with the exception of the session lifecycle methods {@link ClusteredService#onSessionOpen(ClientSession, long)} and
+ * {@link ClusteredService#onSessionClose(ClientSession, long, CloseReason)}.
  */
 public interface Cluster
 {
+    /**
+     * Role of the node in the cluster.
+     */
     enum Role
     {
         /**
@@ -52,28 +64,17 @@ public interface Cluster
          */
         LEADER(2);
 
-        static final Role[] ROLES;
-
-        static
-        {
-            final Role[] roles = values();
-            ROLES = new Role[roles.length];
-            for (final Role role : roles)
-            {
-                final int code = role.code();
-                if (null != ROLES[code])
-                {
-                    throw new ClusterException("code already in use: " + code);
-                }
-
-                ROLES[code] = role;
-            }
-        }
+        static final Role[] ROLES = values();
 
         private final int code;
 
         Role(final int code)
         {
+            if (code != ordinal())
+            {
+                throw new IllegalArgumentException(name() + " - code must equal ordinal value: code=" + code);
+            }
+
             this.code = code;
         }
 
@@ -93,14 +94,14 @@ public interface Cluster
          * @param code for the {@link Role}.
          * @return the {@link Role} of the cluster node.
          */
-        public static Role get(final int code)
+        public static Role get(final long code)
         {
             if (code < 0 || code > (ROLES.length - 1))
             {
                 throw new IllegalStateException("Invalid role counter code: " + code);
             }
 
-            return ROLES[code];
+            return ROLES[(int)code];
         }
 
         /**
@@ -112,7 +113,7 @@ public interface Cluster
          */
         public static Role get(final AtomicCounter counter)
         {
-            return get((int)counter.get());
+            return get(counter.get());
         }
     }
 

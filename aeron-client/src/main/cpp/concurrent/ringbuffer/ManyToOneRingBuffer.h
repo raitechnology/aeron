@@ -20,19 +20,17 @@
 #include <climits>
 #include <functional>
 #include <algorithm>
-#include <util/Index.h>
-#include <util/LangUtil.h>
-#include <concurrent/AtomicBuffer.h>
-#include <concurrent/Atomic64.h>
-#include "RingBufferDescriptor.h"
-#include "RecordDescriptor.h"
+#include "util/LangUtil.h"
+#include "concurrent/AtomicBuffer.h"
+#include "concurrent/ringbuffer/RingBufferDescriptor.h"
+#include "concurrent/ringbuffer/RecordDescriptor.h"
 
 namespace aeron { namespace concurrent { namespace ringbuffer {
 
 class ManyToOneRingBuffer
 {
 public:
-    explicit ManyToOneRingBuffer(concurrent::AtomicBuffer& buffer) :
+    explicit ManyToOneRingBuffer(concurrent::AtomicBuffer &buffer) :
         m_buffer(buffer)
     {
         m_capacity = buffer.capacity() - RingBufferDescriptor::TRAILER_LENGTH;
@@ -48,16 +46,15 @@ public:
         m_consumerHeartbeatIndex = m_capacity + RingBufferDescriptor::CONSUMER_HEARTBEAT_OFFSET;
     }
 
-    ManyToOneRingBuffer(const ManyToOneRingBuffer&) = delete;
-    ManyToOneRingBuffer& operator=(const ManyToOneRingBuffer&) = delete;
+    ManyToOneRingBuffer(const ManyToOneRingBuffer &) = delete;
+    ManyToOneRingBuffer & operator = (const ManyToOneRingBuffer &) = delete;
 
     inline util::index_t capacity() const
     {
         return m_capacity;
     }
 
-    bool write(
-        std::int32_t msgTypeId, concurrent::AtomicBuffer& srcBuffer, util::index_t srcIndex, util::index_t length)
+    bool write(std::int32_t msgTypeId, concurrent::AtomicBuffer &srcBuffer, util::index_t srcIndex, util::index_t length)
     {
         bool isSuccessful = false;
 
@@ -80,7 +77,7 @@ public:
         return isSuccessful;
     }
 
-    int read(const handler_t& handler, int messageCountLimit)
+    int read(const handler_t &handler, int messageCountLimit)
     {
         const std::int64_t head = m_buffer.getInt64(m_headPositionIndex);
         const auto headIndex = static_cast<std::int32_t>(head & (m_capacity - 1));
@@ -93,7 +90,7 @@ public:
             {
                 if (bytesRead != 0)
                 {
-                    m_buffer.setMemory(headIndex, static_cast<size_t>(bytesRead), 0);
+                    m_buffer.setMemory(headIndex, static_cast<std::size_t>(bytesRead), 0);
                     m_buffer.putInt64Ordered(m_headPositionIndex, head + bytesRead);
                 }
             }};
@@ -119,7 +116,9 @@ public:
 
             ++messagesRead;
             handler(
-                msgTypeId, m_buffer, RecordDescriptor::encodedMsgOffset(recordIndex),
+                msgTypeId,
+                m_buffer,
+                RecordDescriptor::encodedMsgOffset(recordIndex),
                 recordLength - RecordDescriptor::HEADER_LENGTH);
         }
 
@@ -175,7 +174,7 @@ public:
         }
         while (headAfter != headBefore);
 
-        int64_t size = tail - headAfter;
+        std::int64_t size = tail - headAfter;
         if (size < 0)
         {
             return 0;

@@ -81,7 +81,6 @@ abstract class ArchiveConductor
     private final ControlResponseProxy controlResponseProxy = new ControlResponseProxy();
     private final UnsafeBuffer counterMetadataBuffer = new UnsafeBuffer(new byte[METADATA_LENGTH]);
 
-    private final Runnable aeronCloseHandler = this::abort;
     private final Aeron aeron;
     private final AgentInvoker aeronAgentInvoker;
     private final AgentInvoker driverAgentInvoker;
@@ -96,6 +95,8 @@ abstract class ArchiveConductor
     private final RecordingEventsProxy recordingEventsProxy;
     private final Authenticator authenticator;
     private final ControlSessionProxy controlSessionProxy;
+    private final long closeHandlerRegistrationId;
+    private final long unavailableCounterHandlerRegistrationId;
     private final long connectTimeoutMs;
     private long timeOfLastMarkFileUpdateMs;
     private long nextSessionId = ThreadLocalRandom.current().nextInt(Integer.MAX_VALUE);
@@ -104,7 +105,7 @@ abstract class ArchiveConductor
     private int replayId = 1;
     private volatile boolean isAbort;
 
-    protected final Archive.Context ctx;
+    final Archive.Context ctx;
     SessionWorker<ReplaySession> replayer;
     SessionWorker<RecordingSession> recorder;
 
@@ -124,8 +125,8 @@ abstract class ArchiveConductor
         maxConcurrentReplays = ctx.maxConcurrentReplays();
         connectTimeoutMs = TimeUnit.NANOSECONDS.toMillis(ctx.connectTimeoutNs());
 
-        aeron.addUnavailableCounterHandler(this);
-        aeron.addCloseHandler(aeronCloseHandler);
+        unavailableCounterHandlerRegistrationId = aeron.addUnavailableCounterHandler(this);
+        closeHandlerRegistrationId = aeron.addCloseHandler(this::abort);
 
         final ChannelUri controlChannelUri = ChannelUri.parse(ctx.controlChannel());
         controlChannelUri.put(CommonContext.SPARSE_PARAM_NAME, Boolean.toString(ctx.controlTermBufferSparse()));
@@ -197,11 +198,11 @@ abstract class ArchiveConductor
         }
         else
         {
-            aeron.removeCloseHandler(aeronCloseHandler);
+            aeron.removeCloseHandler(closeHandlerRegistrationId);
 
             if (!ctx.ownsAeronClient())
             {
-                aeron.removeUnavailableCounterHandler(this);
+                aeron.removeUnavailableCounterHandler(unavailableCounterHandlerRegistrationId);
 
                 for (final Subscription subscription : recordingSubscriptionMap.values())
                 {
@@ -222,8 +223,16 @@ abstract class ArchiveConductor
         try
         {
             isAbort = true;
-            replayer.abort();
-            recorder.abort();
+
+            if (null != replayer)
+            {
+                replayer.abort();
+            }
+
+            if (null != recorder)
+            {
+                recorder.abort();
+            }
 
             ctx.errorCounter().close();
             ctx.abortLatch().await(AgentRunner.RETRY_CLOSE_TIMEOUT_MS * 3L, TimeUnit.MILLISECONDS);
@@ -234,7 +243,7 @@ abstract class ArchiveConductor
         }
     }
 
-    protected int preWork()
+    public int doWork()
     {
         int workCount = 0;
 
@@ -259,7 +268,7 @@ abstract class ArchiveConductor
         workCount += invokeDriverConductor();
         workCount += runTasks(taskQueue);
 
-        return workCount;
+        return workCount + super.doWork();
     }
 
     final int invokeAeronInvoker()
@@ -722,7 +731,7 @@ abstract class ArchiveConductor
         catalog.recordingSummary(recordingId, recordingSummary);
         if (streamId != recordingSummary.streamId)
         {
-            final String msg = "cannot extend recording  " + recordingSummary.recordingId +
+            final String msg = "cannot extend recording " + recordingSummary.recordingId +
                 " with streamId " + streamId + " != existing streamId " + recordingSummary.streamId;
             controlSession.sendErrorResponse(correlationId, UNKNOWN_RECORDING, msg, controlResponseProxy);
             return null;
@@ -885,7 +894,7 @@ abstract class ArchiveConductor
 
             if (null != recordingSession)
             {
-                final long subscriptionId = recordingSession.image().subscription().registrationId();
+                final long subscriptionId = recordingSession.subscription().registrationId();
                 final Subscription subscription = removeRecordingSubscription(subscriptionId);
                 if (null != subscription)
                 {
@@ -913,7 +922,7 @@ abstract class ArchiveConductor
             session.controlSession().attemptSignal(
                 session.correlationId(),
                 recordingId,
-                session.image().subscription().registrationId(),
+                session.subscription().registrationId(),
                 position,
                 RecordingSignal.STOP);
         }
@@ -1285,8 +1294,9 @@ abstract class ArchiveConductor
             .tags(channelUri)
             .rejoin(channelUri)
             .group(channelUri)
-            .flowControl(channelUri)
             .congestionControl(channelUri)
+            .flowControl(channelUri)
+            .groupTag(channelUri)
             .alias(channelUri);
 
         final String sessionIdStr = channelUri.get(CommonContext.SESSION_ID_PARAM_NAME);
@@ -1394,7 +1404,7 @@ abstract class ArchiveConductor
             sourceIdentity);
 
         final Counter position = RecordingPos.allocate(
-            aeron, counterMetadataBuffer, recordingId, sessionId, streamId, strippedChannel, image.sourceIdentity());
+            aeron, counterMetadataBuffer, recordingId, sessionId, streamId, strippedChannel, sourceIdentity);
         position.setOrdered(startPosition);
 
         final RecordingSession session = new RecordingSession(
@@ -1433,53 +1443,65 @@ abstract class ArchiveConductor
         final Image image,
         final boolean autoStop)
     {
-        if (recordingSessionByIdMap.containsKey(recordingId))
+        try
         {
-            final String msg = "cannot extend active recording for " + recordingId;
-            controlSession.attemptErrorResponse(correlationId, ACTIVE_RECORDING, msg, controlResponseProxy);
-            throw new ArchiveException(msg);
+            if (recordingSessionByIdMap.containsKey(recordingId))
+            {
+                final String msg = "cannot extend active recording for " + recordingId;
+                controlSession.attemptErrorResponse(correlationId, ACTIVE_RECORDING, msg, controlResponseProxy);
+                throw new ArchiveException(msg);
+            }
+
+            catalog.recordingSummary(recordingId, recordingSummary);
+            validateImageForExtendRecording(correlationId, controlSession, image, recordingSummary);
+
+            final Counter position = RecordingPos.allocate(
+                aeron,
+                counterMetadataBuffer,
+                recordingId,
+                image.sessionId(),
+                image.subscription().streamId(),
+                strippedChannel,
+                image.sourceIdentity());
+
+            position.setOrdered(image.joinPosition());
+
+            final RecordingSession session = new RecordingSession(
+                correlationId,
+                recordingId,
+                recordingSummary.startPosition,
+                recordingSummary.segmentFileLength,
+                originalChannel,
+                recordingEventsProxy,
+                image,
+                position,
+                archiveDirChannel,
+                ctx,
+                controlSession,
+                ctx.recordChecksumBuffer(),
+                ctx.recordChecksum(),
+                autoStop);
+
+            recordingSessionByIdMap.put(recordingId, session);
+            catalog.extendRecording(recordingId, controlSession.sessionId(), correlationId, image.sessionId());
+            recorder.addSession(session);
+
+            controlSession.attemptSignal(
+                correlationId,
+                recordingId,
+                image.subscription().registrationId(),
+                image.joinPosition(),
+                RecordingSignal.EXTEND);
         }
-
-        catalog.recordingSummary(recordingId, recordingSummary);
-        validateImageForExtendRecording(correlationId, controlSession, image, recordingSummary);
-
-        final Counter position = RecordingPos.allocate(
-            aeron,
-            counterMetadataBuffer,
-            recordingId,
-            image.sessionId(),
-            image.subscription().streamId(),
-            strippedChannel,
-            image.sourceIdentity());
-
-        position.setOrdered(image.joinPosition());
-
-        final RecordingSession session = new RecordingSession(
-            correlationId,
-            recordingId,
-            recordingSummary.startPosition,
-            recordingSummary.segmentFileLength,
-            originalChannel,
-            recordingEventsProxy,
-            image,
-            position,
-            archiveDirChannel,
-            ctx,
-            controlSession,
-            ctx.recordChecksumBuffer(),
-            ctx.recordChecksum(),
-            autoStop);
-
-        recordingSessionByIdMap.put(recordingId, session);
-        catalog.extendRecording(recordingId, controlSession.sessionId(), correlationId, image.sessionId());
-        recorder.addSession(session);
-
-        controlSession.attemptSignal(
-            correlationId,
-            recordingId,
-            image.subscription().registrationId(),
-            image.joinPosition(),
-            RecordingSignal.EXTEND);
+        catch (final Exception ex)
+        {
+            errorHandler.onError(ex);
+            if (autoStop)
+            {
+                removeRecordingSubscription(image.subscription().registrationId());
+                CloseHelper.close(errorHandler, image.subscription());
+            }
+        }
     }
 
     private ExclusivePublication newReplayPublication(

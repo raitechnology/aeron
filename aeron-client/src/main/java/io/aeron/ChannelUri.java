@@ -38,7 +38,7 @@ import static io.aeron.logbuffer.FrameDescriptor.FRAME_ALIGNMENT;
  * Multiple params with the same key are allowed, the last value specified takes precedence.
  * @see ChannelUriStringBuilder
  */
-public class ChannelUri
+public final class ChannelUri
 {
     private enum State
     {
@@ -46,7 +46,7 @@ public class ChannelUri
     }
 
     /**
-     * URI Scheme for Aeron channels.
+     * URI Scheme for Aeron channels and destinations.
      */
     public static final String AERON_SCHEME = "aeron";
 
@@ -55,6 +55,9 @@ public class ChannelUri
      */
     public static final String SPY_QUALIFIER = "aeron-spy";
 
+    /**
+     * Invalid tag value returned when calling {@link #getTag(String)} and the channel is not tagged.
+     */
     public static final long INVALID_TAG = Aeron.NULL_VALUE;
 
     private static final int CHANNEL_TAG_INDEX = 0;
@@ -64,7 +67,7 @@ public class ChannelUri
 
     private String prefix;
     private String media;
-    private final Map<String, String> params;
+    private final Object2ObjectHashMap<String, String> params;
     private final String[] tags;
 
     /**
@@ -74,23 +77,12 @@ public class ChannelUri
      * @param media  for the channel which is typically "udp" or "ipc".
      * @param params for the query string as key value pairs.
      */
-    public ChannelUri(final String prefix, final String media, final Map<String, String> params)
+    private ChannelUri(final String prefix, final String media, final Object2ObjectHashMap<String, String> params)
     {
         this.prefix = prefix;
         this.media = media;
         this.params = params;
         this.tags = splitTags(params.get(TAGS_PARAM_NAME));
-    }
-
-    /**
-     * Construct with the components provided to avoid parsing.
-     *
-     * @param media  for the channel which is typically "udp" or "ipc".
-     * @param params for the query string as key value pairs.
-     */
-    public ChannelUri(final String media, final Map<String, String> params)
-    {
-        this("", media, params);
     }
 
     /**
@@ -240,7 +232,7 @@ public class ChannelUri
      */
     public String channelTag()
     {
-        return (null != tags && tags.length > CHANNEL_TAG_INDEX) ? tags[CHANNEL_TAG_INDEX] : null;
+        return tags.length > CHANNEL_TAG_INDEX ? tags[CHANNEL_TAG_INDEX] : null;
     }
 
     /**
@@ -252,7 +244,44 @@ public class ChannelUri
      */
     public String entityTag()
     {
-        return (null != tags && tags.length > ENTITY_TAG_INDEX) ? tags[ENTITY_TAG_INDEX] : null;
+        return tags.length > ENTITY_TAG_INDEX ? tags[ENTITY_TAG_INDEX] : null;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public boolean equals(final Object o)
+    {
+        if (this == o)
+        {
+            return true;
+        }
+
+        if (!(o instanceof ChannelUri))
+        {
+            return false;
+        }
+
+        final ChannelUri that = (ChannelUri)o;
+
+        return Objects.equals(prefix, that.prefix) &&
+            Objects.equals(media, that.media) &&
+            Objects.equals(params, that.params) &&
+            Arrays.equals(tags, that.tags);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public int hashCode()
+    {
+        int result = 19;
+        result = 31 * result + Objects.hashCode(prefix);
+        result = 31 * result + Objects.hashCode(media);
+        result = 31 * result + Objects.hashCode(params);
+        result = 31 * result + Arrays.hashCode(tags);
+
+        return result;
     }
 
     /**
@@ -349,7 +378,7 @@ public class ChannelUri
         }
 
         final StringBuilder builder = new StringBuilder();
-        final Map<String, String> params = new Object2ObjectHashMap<>();
+        final Object2ObjectHashMap<String, String> params = new Object2ObjectHashMap<>();
         String media = null;
         String key = null;
 
@@ -488,7 +517,7 @@ public class ChannelUri
         throw new IllegalArgumentException("unknown media: " + media);
     }
 
-    private static boolean startsWith(final CharSequence input, final int position, final CharSequence prefix)
+    private static boolean startsWith(final CharSequence input, final int position, final String prefix)
     {
         if ((input.length() - position) < prefix.length())
         {

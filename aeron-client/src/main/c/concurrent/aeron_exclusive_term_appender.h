@@ -22,7 +22,6 @@
 
 #include "aeronc.h"
 #include "util/aeron_fileutil.h"
-#include "concurrent/aeron_atomic.h"
 #include "util/aeron_error.h"
 
 #define AERON_EXCLUSIVE_TERM_APPENDER_FAILED (-2)
@@ -69,7 +68,7 @@ inline int32_t aeron_exclusive_term_appender_handle_end_of_log_condition(
         aeron_data_header_t *header = (aeron_data_header_t *)(term_buffer->addr + term_offset);
 
         aeron_exclusive_term_appender_header_write(
-            term_buffer, term_offset, padding_length, term_id, session_id, stream_id);
+            term_buffer, term_offset, (size_t)padding_length, term_id, session_id, stream_id);
         header->frame_header.type = AERON_HDR_TYPE_PAD;
         AERON_PUT_ORDERED(header->frame_header.frame_length, padding_length);
     }
@@ -88,7 +87,7 @@ inline int32_t aeron_exclusive_term_appender_claim(
     int32_t stream_id)
 {
     const size_t frame_length = length + AERON_DATA_HEADER_LENGTH;
-    const int32_t aligned_frame_length = AERON_ALIGN(frame_length, AERON_LOGBUFFER_FRAME_ALIGNMENT);
+    const int32_t aligned_frame_length = (int32_t)AERON_ALIGN(frame_length, AERON_LOGBUFFER_FRAME_ALIGNMENT);
     const int32_t term_length = (int32_t)term_buffer->length;
 
     int32_t resulting_offset = term_offset + aligned_frame_length;
@@ -121,7 +120,7 @@ inline int32_t aeron_exclusive_term_appender_append_padding(
     int32_t stream_id)
 {
     const size_t frame_length = length + AERON_DATA_HEADER_LENGTH;
-    const int32_t aligned_frame_length = AERON_ALIGN(frame_length, AERON_LOGBUFFER_FRAME_ALIGNMENT);
+    const int32_t aligned_frame_length = (int32_t)AERON_ALIGN(frame_length, AERON_LOGBUFFER_FRAME_ALIGNMENT);
     const int32_t term_length = (int32_t)term_buffer->length;
 
     int32_t resulting_offset = term_offset + aligned_frame_length;
@@ -158,7 +157,7 @@ inline int32_t aeron_exclusive_term_appender_append_unfragmented_message(
     int32_t stream_id)
 {
     const size_t frame_length = length + AERON_DATA_HEADER_LENGTH;
-    const int32_t aligned_frame_length = AERON_ALIGN(frame_length, AERON_LOGBUFFER_FRAME_ALIGNMENT);
+    const int32_t aligned_frame_length = (int32_t)AERON_ALIGN(frame_length, AERON_LOGBUFFER_FRAME_ALIGNMENT);
     const int32_t term_length = (int32_t)term_buffer->length;
 
     int32_t resulting_offset = term_offset + aligned_frame_length;
@@ -203,7 +202,7 @@ inline int32_t aeron_exclusive_term_appender_append_unfragmented_messagev(
     int32_t stream_id)
 {
     const size_t frame_length = length + AERON_DATA_HEADER_LENGTH;
-    const int32_t aligned_frame_length = AERON_ALIGN(frame_length, AERON_LOGBUFFER_FRAME_ALIGNMENT);
+    const int32_t aligned_frame_length = (int32_t)AERON_ALIGN(frame_length, AERON_LOGBUFFER_FRAME_ALIGNMENT);
     const int32_t term_length = (int32_t)term_buffer->length;
 
     int32_t resulting_offset = term_offset + aligned_frame_length;
@@ -371,7 +370,7 @@ inline int32_t aeron_exclusive_term_appender_append_fragmented_messagev(
                 int32_t current_buffer_remaining = (int32_t)iov[i].iov_len - current_buffer_offset;
                 int32_t num_bytes = (bytes_to_write - bytes_written) < current_buffer_remaining ?
                     (bytes_to_write - bytes_written) : current_buffer_remaining;
-                memcpy(term_buffer->addr + payload_offset, iov[i].iov_base + current_buffer_offset, num_bytes);
+                memcpy(term_buffer->addr + payload_offset, iov[i].iov_base + current_buffer_offset, (size_t)num_bytes);
 
                 bytes_written += num_bytes;
                 payload_offset += num_bytes;

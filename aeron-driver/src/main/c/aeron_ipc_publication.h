@@ -17,19 +17,18 @@
 #ifndef AERON_IPC_PUBLICATION_H
 #define AERON_IPC_PUBLICATION_H
 
-#include "aeron_driver_common.h"
 #include "util/aeron_bitutil.h"
 #include "uri/aeron_uri.h"
-#include "aeron_driver_context.h"
 #include "util/aeron_fileutil.h"
-#include "concurrent/aeron_counters_manager.h"
+#include "aeron_driver_context.h"
 #include "aeron_system_counters.h"
 
 typedef enum aeron_ipc_publication_state_enum
 {
     AERON_IPC_PUBLICATION_STATE_ACTIVE,
-    AERON_IPC_PUBLICATION_STATE_INACTIVE,
-    AERON_IPC_PUBLICATION_STATE_LINGER
+    AERON_IPC_PUBLICATION_STATE_DRAINING,
+    AERON_IPC_PUBLICATION_STATE_LINGER,
+    AERON_IPC_PUBLICATION_STATE_DONE
 }
 aeron_ipc_publication_state_t;
 
@@ -51,7 +50,7 @@ typedef struct aeron_ipc_publication_stct
         int64_t clean_position;
         int64_t consumer_position;
         int64_t last_consumer_position;
-        int64_t time_of_last_consumer_position_change;
+        int64_t time_of_last_consumer_position_change_ns;
     }
     conductor_fields;
 
@@ -66,7 +65,9 @@ typedef struct aeron_ipc_publication_stct
     size_t log_file_name_length;
     size_t position_bits_to_shift;
     bool is_exclusive;
-    aeron_map_raw_log_close_func_t map_raw_log_close_func;
+    aeron_raw_log_close_func_t raw_log_close_func;
+    aeron_raw_log_free_func_t raw_log_free_func;
+    aeron_untethered_subscription_state_change_func_t untethered_subscription_state_change_func;
 
     int64_t *unblocked_publications_counter;
 }
@@ -150,9 +151,21 @@ inline int64_t aeron_ipc_publication_producer_position(aeron_ipc_publication_t *
         publication->initial_term_id);
 }
 
-inline int64_t aeron_ipc_publication_joining_position(aeron_ipc_publication_t *publication)
+inline int64_t aeron_ipc_publication_join_position(aeron_ipc_publication_t *publication)
 {
-    return publication->conductor_fields.consumer_position;
+    int64_t position = publication->conductor_fields.consumer_position;
+
+    for (size_t i = 0, length = publication->conductor_fields.subscribable.length; i < length; i++)
+    {
+        int64_t sub_pos = aeron_counter_get_volatile(publication->conductor_fields.subscribable.array[i].value_addr);
+
+        if (sub_pos < position)
+        {
+            position = sub_pos;
+        }
+    }
+
+    return position;
 }
 
 inline bool aeron_ipc_publication_has_reached_end_of_life(aeron_ipc_publication_t *publication)

@@ -23,12 +23,10 @@
 #endif
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
 #include <errno.h>
 
 #include "aeron_common.h"
-#include "util/aeron_bitutil.h"
 #include "util/aeron_fileutil.h"
 #include "aeronc.h"
 #include "aeron_context.h"
@@ -39,7 +37,7 @@
 int aeron_client_connect_to_driver(aeron_mapped_file_t *cnc_mmap, aeron_context_t *context)
 {
     long long start_ms = context->epoch_clock();
-    long long deadline_ms = start_ms + context->driver_timeout_ms;
+    long long deadline_ms = start_ms + (long long)context->driver_timeout_ms;
     char filename[AERON_MAX_PATH];
 
 #if defined(_MSC_VER)
@@ -50,11 +48,11 @@ int aeron_client_connect_to_driver(aeron_mapped_file_t *cnc_mmap, aeron_context_
 
     while (true)
     {
-        while (aeron_file_length(filename) <= 0)
+        while (aeron_file_length(filename) <= (int64_t)AERON_CNC_VERSION_AND_META_DATA_LENGTH)
         {
             if (context->epoch_clock() > deadline_ms)
             {
-                aeron_set_err(ETIMEDOUT, "CnC file not created: %s", filename);
+                aeron_set_err(AERON_CLIENT_ERROR_DRIVER_TIMEOUT, "CnC file not created: %s", filename);
                 return -1;
             }
 
@@ -67,6 +65,13 @@ int aeron_client_connect_to_driver(aeron_mapped_file_t *cnc_mmap, aeron_context_
             return -1;
         }
 
+        if (cnc_mmap->length <= (int64_t)AERON_CNC_VERSION_AND_META_DATA_LENGTH)
+        {
+            aeron_unmap(cnc_mmap);
+            aeron_micro_sleep(1000);
+            continue;
+        }
+
         aeron_cnc_metadata_t *metadata = (aeron_cnc_metadata_t *)cnc_mmap->addr;
         int32_t cnc_version;
 
@@ -74,7 +79,7 @@ int aeron_client_connect_to_driver(aeron_mapped_file_t *cnc_mmap, aeron_context_
         {
             if (context->epoch_clock() > deadline_ms)
             {
-                aeron_set_err(ETIMEDOUT, "CnC file is created but not initialised");
+                aeron_set_err(AERON_CLIENT_ERROR_CLIENT_TIMEOUT, "CnC file is created but not initialised");
                 aeron_unmap(cnc_mmap);
                 return -1;
             }
@@ -95,6 +100,13 @@ int aeron_client_connect_to_driver(aeron_mapped_file_t *cnc_mmap, aeron_context_
             return -1;
         }
 
+        if (!aeron_cnc_is_file_length_sufficient(cnc_mmap))
+        {
+            aeron_unmap(cnc_mmap);
+            aeron_micro_sleep(1000);
+            continue;
+        }
+
         aeron_mpsc_rb_t rb;
 
         if (aeron_mpsc_rb_init(
@@ -109,7 +121,7 @@ int aeron_client_connect_to_driver(aeron_mapped_file_t *cnc_mmap, aeron_context_
         {
             if (context->epoch_clock() > deadline_ms)
             {
-                aeron_set_err(ETIMEDOUT, "no driver heartbeat detected");
+                aeron_set_err(AERON_CLIENT_ERROR_DRIVER_TIMEOUT, "no driver heartbeat detected");
                 aeron_unmap(cnc_mmap);
                 return -1;
             }
@@ -122,7 +134,7 @@ int aeron_client_connect_to_driver(aeron_mapped_file_t *cnc_mmap, aeron_context_
         {
             if (now_ms > deadline_ms)
             {
-                aeron_set_err(ETIMEDOUT, "no driver heartbeat detected");
+                aeron_set_err(AERON_CLIENT_ERROR_DRIVER_TIMEOUT, "no driver heartbeat detected");
                 aeron_unmap(cnc_mmap);
                 return -1;
             }

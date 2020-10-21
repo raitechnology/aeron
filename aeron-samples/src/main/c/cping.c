@@ -108,14 +108,13 @@ void send_ping_and_receive_pong(
         while ((position = aeron_exclusive_publication_offer(
             publication, message, message_length, NULL, NULL)) < 0);
 
-        do
+        while (aeron_image_position(image) < position)
         {
             while (aeron_image_poll(image, fragment_handler, poll_clientd, DEFAULT_FRAGMENT_COUNT_LIMIT) <= 0)
             {
                 aeron_idle_strategy_busy_spinning_idle(NULL, 0);
             }
         }
-        while (aeron_image_position(image) < position);
     }
 }
 
@@ -356,13 +355,13 @@ int main(int argc, char **argv)
     printf("Shutting down...\n");
     status = EXIT_SUCCESS;
 
-    cleanup:
-        aeron_subscription_image_release(subscription, image);
-        aeron_subscription_close(subscription);
-        aeron_exclusive_publication_close(publication);
-        aeron_close(aeron);
-        aeron_context_close(context);
-        aeron_image_fragment_assembler_delete(fragment_assembler);
+cleanup:
+    aeron_subscription_image_release(subscription, image);
+    aeron_subscription_close(subscription, NULL, NULL);
+    aeron_exclusive_publication_close(publication, NULL, NULL);
+    aeron_close(aeron);
+    aeron_context_close(context);
+    aeron_image_fragment_assembler_delete(fragment_assembler);
 
     return status;
 }

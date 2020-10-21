@@ -15,10 +15,20 @@
  */
 package io.aeron.exceptions;
 
+/**
+ * Indicates an error occurred when setting up the channel for either a {@link io.aeron.Publication} or
+ * {@link io.aeron.Subscription}.
+ */
 public class ChannelEndpointException extends AeronException
 {
     private final int statusIndicatorId;
 
+    /**
+     * Construct an exception with a given status indicator counter id and detail message.
+     *
+     * @param statusIndicatorId counter id for the channel.
+     * @param message           for the exception.
+     */
     public ChannelEndpointException(final int statusIndicatorId, final String message)
     {
         super(message);

@@ -14,20 +14,14 @@
  * limitations under the License.
  */
 
-#include <util/MemoryMappedFile.h>
-#include <concurrent/CountersReader.h>
-#include <util/CommandOptionParser.h>
-
 #include <iostream>
 #include <atomic>
 #include <thread>
 #include <cstdio>
 #include <csignal>
-
-#define __STDC_FORMAT_MACROS
-
 #include <cinttypes>
 
+#include "util/CommandOptionParser.h"
 #include "Context.h"
 
 using namespace aeron;
@@ -37,7 +31,7 @@ using namespace std::chrono;
 
 std::atomic<bool> running(true);
 
-void sigIntHandler(int param)
+void sigIntHandler(int)
 {
     running = false;
 }
@@ -69,7 +63,7 @@ Settings parseCmdLine(CommandOptionParser &cp, int argc, char **argv)
     return settings;
 }
 
-int main (int argc, char** argv)
+int main (int argc, char **argv)
 {
     CommandOptionParser cp;
     cp.addOption(CommandOption(optHelp,   0, 0, "                Displays help information."));
@@ -110,7 +104,7 @@ int main (int argc, char** argv)
             char currentTime[80];
 
             ::time(&rawtime);
-            struct tm localTm;
+            struct tm localTm{};
 
 #ifdef _MSC_VER
             localtime_s(&localTm, &rawtime);

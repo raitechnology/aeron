@@ -17,10 +17,9 @@
 #include <string.h>
 #include <errno.h>
 #include "concurrent/aeron_broadcast_receiver.h"
-#include "aeron_atomic.h"
 #include "util/aeron_error.h"
 
-int aeron_broadcast_receiver_init(volatile aeron_broadcast_receiver_t *receiver, void *buffer, size_t length)
+int aeron_broadcast_receiver_init(aeron_broadcast_receiver_t *receiver, void *buffer, size_t length)
 {
     const size_t capacity = length - AERON_BROADCAST_BUFFER_TRAILER_LENGTH;
     int result = -1;
@@ -29,12 +28,15 @@ int aeron_broadcast_receiver_init(volatile aeron_broadcast_receiver_t *receiver,
     {
         receiver->buffer = buffer;
         receiver->capacity = capacity;
-        receiver->mask = capacity - 1;
-        receiver->descriptor = (aeron_broadcast_descriptor_t *) (receiver->buffer + receiver->capacity);
+        receiver->mask = capacity - 1u;
+        receiver->descriptor = (aeron_broadcast_descriptor_t *)(receiver->buffer + receiver->capacity);
 
-        receiver->record_offset = 0;
-        receiver->cursor = 0;
-        receiver->next_record = 0;
+        int64_t latest;
+        AERON_GET_VOLATILE(latest, receiver->descriptor->latest_counter);
+
+        receiver->cursor = latest;
+        receiver->next_record = latest;
+        receiver->record_offset = (size_t)latest & receiver->mask;
         receiver->lapped_count = 0;
 
         result = 0;
@@ -47,14 +49,14 @@ int aeron_broadcast_receiver_init(volatile aeron_broadcast_receiver_t *receiver,
     return result;
 }
 
-extern bool aeron_broadcast_receiver_validate(volatile aeron_broadcast_receiver_t *receiver);
+extern bool aeron_broadcast_receiver_validate(aeron_broadcast_receiver_t *receiver);
 
-extern bool aeron_broadcast_receiver_validate_at(volatile aeron_broadcast_receiver_t *receiver, int64_t cursor);
+extern bool aeron_broadcast_receiver_validate_at(aeron_broadcast_receiver_t *receiver, int64_t cursor);
 
-extern bool aeron_broadcast_receiver_receive_next(volatile aeron_broadcast_receiver_t *receiver);
+extern bool aeron_broadcast_receiver_receive_next(aeron_broadcast_receiver_t *receiver);
 
 int aeron_broadcast_receiver_receive(
-    volatile aeron_broadcast_receiver_t *receiver, aeron_broadcast_receiver_handler_t handler, void *clientd)
+    aeron_broadcast_receiver_t *receiver, aeron_broadcast_receiver_handler_t handler, void *clientd)
 {
     int messages_received = 0;
     const long last_seen_lapped_count = receiver->lapped_count;

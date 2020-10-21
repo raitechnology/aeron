@@ -14,31 +14,21 @@
  * limitations under the License.
  */
 
-#include "CommandOptionParser.h"
-#include "StringUtil.h"
+#include "util/CommandOptionParser.h"
+#include "util/StringUtil.h"
 
 namespace aeron { namespace util
 {
 
-CommandOption::CommandOption() :
-    m_optionChar('-'),
-    m_minParams(0),
-    m_maxParams(0),
-    m_helpText(""),
-    m_isPresent(false)
-{
-}
-
-CommandOption::CommandOption(char optionChar, size_t minParams, size_t maxParams, std::string helpText) :
+CommandOption::CommandOption(char optionChar, std::size_t minParams, std::size_t maxParams, std::string helpText) :
     m_optionChar(optionChar),
     m_minParams(minParams),
     m_maxParams(maxParams),
-    m_helpText(std::move(helpText)),
-    m_isPresent(false)
+    m_helpText(std::move(helpText))
 {
 }
 
-void CommandOption::checkIndex(size_t index) const
+void CommandOption::checkIndex(std::size_t index) const
 {
     if (index > m_params.size())
     {
@@ -47,13 +37,13 @@ void CommandOption::checkIndex(size_t index) const
     }
 }
 
-std::string CommandOption::getParam(size_t index) const
+std::string CommandOption::getParam(std::size_t index) const
 {
     checkIndex(index);
     return m_params[index];
 }
 
-std::string CommandOption::getParam(size_t index, std::string defaultValue) const
+std::string CommandOption::getParam(std::size_t index, std::string defaultValue) const
 {
     if (!isPresent())
     {
@@ -63,7 +53,7 @@ std::string CommandOption::getParam(size_t index, std::string defaultValue) cons
     return getParam(index);
 }
 
-int CommandOption::getParamAsInt(size_t index) const
+int CommandOption::getParamAsInt(std::size_t index) const
 {
     checkIndex(index);
     std::string param = m_params[index];
@@ -79,14 +69,14 @@ int CommandOption::getParamAsInt(size_t index) const
     }
 }
 
-long CommandOption::getParamAsLong(size_t index) const
+long long CommandOption::getParamAsLong(std::size_t index) const
 {
     checkIndex(index);
     std::string param = m_params[index];
 
     try
     {
-        return parse<long>(param);
+        return parse<long long>(param);
     }
     catch (const ParseException &)
     {
@@ -95,7 +85,7 @@ long CommandOption::getParamAsLong(size_t index) const
     }
 }
 
-int CommandOption::getParamAsInt(size_t index, int minValue, int maxValue, int defaultValue) const
+int CommandOption::getParamAsInt(std::size_t index, int minValue, int maxValue, int defaultValue) const
 {
     if (!isPresent())
     {
@@ -114,14 +104,15 @@ int CommandOption::getParamAsInt(size_t index, int minValue, int maxValue, int d
     return value;
 }
 
-long CommandOption::getParamAsLong(size_t index, long minValue, long maxValue, long defaultValue) const
+long long CommandOption::getParamAsLong(
+    std::size_t index, long long minValue, long long maxValue, long long defaultValue) const
 {
     if (!isPresent())
     {
         return defaultValue;
     }
 
-    long value = getParamAsLong(index);
+    long long value = getParamAsLong(index);
     if (value < minValue || value > maxValue)
     {
         throw CommandOptionException(
@@ -153,5 +144,4 @@ void CommandOption::validate() const
     }
 }
 
-}
-}
+}}

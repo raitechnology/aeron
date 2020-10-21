@@ -89,6 +89,8 @@ public class CounterTest
             COUNTER_LABEL.length());
 
         assertFalse(counter.isClosed());
+        assertEquals(counter.registrationId(), clientA.countersReader().getCounterRegistrationId(counter.id()));
+        assertEquals(clientA.clientId(), clientA.countersReader().getCounterOwnerId(counter.id()));
 
         verify(availableCounterHandlerClientA, timeout(5000L))
             .onAvailableCounter(any(CountersReader.class), eq(counter.registrationId()), eq(counter.id()));
@@ -146,6 +148,11 @@ public class CounterTest
         counter.close();
 
         while (!readableCounter.isClosed())
+        {
+            Tests.sleep(1);
+        }
+
+        while (clientA.hasActiveCommands())
         {
             Tests.sleep(1);
         }

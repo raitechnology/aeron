@@ -19,7 +19,7 @@
 #include <gtest/gtest.h>
 
 #include "MockAtomicBuffer.h"
-#include <concurrent/logbuffer/TermAppender.h>
+#include "concurrent/logbuffer/TermAppender.h"
 
 using namespace aeron::concurrent::logbuffer;
 using namespace aeron::concurrent::mock;
@@ -47,7 +47,7 @@ static std::int64_t packRawTail(std::int32_t termId, std::int32_t termOffset)
     return static_cast<std::int64_t>(termId) << 32 | termOffset;
 }
 
-static std::int64_t reservedValueSupplier(AtomicBuffer&, util::index_t, util::index_t)
+static std::int64_t reservedValueSupplier(AtomicBuffer &, util::index_t, util::index_t)
 {
     return RESERVED_VALUE;
 }
@@ -67,7 +67,7 @@ public:
         m_stateBuffer.fill(0);
     }
 
-    virtual void SetUp()
+    void SetUp() override
     {
         m_logBuffer.fill(0);
         m_stateBuffer.fill(0);
@@ -76,10 +76,10 @@ public:
     }
 
 protected:
-    AERON_DECL_ALIGNED(term_buffer_t m_logBuffer, 16);
-    AERON_DECL_ALIGNED(meta_data_buffer_t m_stateBuffer, 16);
-    AERON_DECL_ALIGNED(hdr_t m_hdrBuffer, 16);
-    AERON_DECL_ALIGNED(src_buffer_t m_srcBuffer, 16);
+    AERON_DECL_ALIGNED(term_buffer_t m_logBuffer, 16) = {};
+    AERON_DECL_ALIGNED(meta_data_buffer_t m_stateBuffer, 16) = {};
+    AERON_DECL_ALIGNED(hdr_t m_hdrBuffer, 16) = {};
+    AERON_DECL_ALIGNED(src_buffer_t m_srcBuffer, 16) = {};
     MockAtomicBuffer m_termBuffer;
     MockAtomicBuffer m_metaDataBuffer;
     AtomicBuffer m_hdr;
@@ -171,15 +171,15 @@ TEST_F(TermAppenderTest, shouldAppendFrameTwiceToLog)
         .InSequence(sequence2);
 
     resultingOffset = m_termAppender.appendUnfragmentedMessage(
-     m_headerWriter, m_src, 0, msgLength, reservedValueSupplier, TERM_ID);
+        m_headerWriter, m_src, 0, msgLength, reservedValueSupplier, TERM_ID);
     EXPECT_EQ(resultingOffset, alignedFrameLength * 2);
 }
 
 TEST_F(TermAppenderTest, shouldPadLogWhenAppendingWithInsufficientRemainingCapacity)
 {
     const util::index_t msgLength = 120;
-    const util::index_t requiredFrameSize =
-        util::BitUtil::align(msgLength + DataFrameHeader::LENGTH, FrameDescriptor::FRAME_ALIGNMENT);
+    const util::index_t requiredFrameSize = util::BitUtil::align(
+        msgLength + DataFrameHeader::LENGTH, FrameDescriptor::FRAME_ALIGNMENT);
     const util::index_t tailValue =
         TERM_BUFFER_CAPACITY - util::BitUtil::align(msgLength, FrameDescriptor::FRAME_ALIGNMENT);
     const util::index_t frameLength = TERM_BUFFER_CAPACITY - tailValue;
@@ -208,8 +208,8 @@ TEST_F(TermAppenderTest, shouldFragmentMessageOverTwoFrames)
 {
     const util::index_t msgLength = MAX_PAYLOAD_LENGTH + 1;
     const util::index_t frameLength = DataFrameHeader::LENGTH + 1;
-    const std::int64_t requiredCapacity =
-        util::BitUtil::align(frameLength, FrameDescriptor::FRAME_ALIGNMENT) + MAX_FRAME_LENGTH;
+    const std::int64_t requiredCapacity = util::BitUtil::align(
+        frameLength, FrameDescriptor::FRAME_ALIGNMENT) + MAX_FRAME_LENGTH;
     util::index_t tail = 0;
     testing::Sequence sequence;
 

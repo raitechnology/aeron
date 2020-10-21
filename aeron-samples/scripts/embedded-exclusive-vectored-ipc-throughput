@@ -21,10 +21,11 @@ ${JAVA_HOME}/bin/java \
     -cp ../../aeron-all/build/libs/aeron-all-${VERSION}.jar \
     -XX:+UnlockExperimentalVMOptions \
     -XX:+TrustFinalNonStaticFields \
+    -XX:+UseBiasedLocking \
     -XX:BiasedLockingStartupDelay=0 \
     -XX:+UseParallelOldGC \
     -Djava.net.preferIPv4Stack=true \
     -Dagrona.disable.bounds.checks=true \
     -Daeron.sample.messageLength=32 \
-    -Daeron.ipc.mtu.length=16K \
+    -Daeron.ipc.mtu.length=8k \
     ${JVM_OPTS} io.aeron.samples.EmbeddedExclusiveVectoredIpcThroughput "$@"

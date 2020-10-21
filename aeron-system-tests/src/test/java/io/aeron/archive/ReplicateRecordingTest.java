@@ -39,10 +39,11 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.io.File;
+import java.util.concurrent.TimeUnit;
 
 import static io.aeron.Aeron.NULL_VALUE;
 import static io.aeron.CommonContext.generateRandomDirName;
-import static io.aeron.archive.Common.*;
+import static io.aeron.archive.ArchiveSystemTests.*;
 import static io.aeron.archive.codecs.SourceLocation.LOCAL;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -58,8 +59,9 @@ public class ReplicateRecordingTest
     private static final String SRC_CONTROL_RESPONSE_CHANNEL = "aeron:udp?endpoint=localhost:8091";
     private static final String DST_CONTROL_REQUEST_CHANNEL = "aeron:udp?endpoint=localhost:8095";
     private static final String DST_CONTROL_RESPONSE_CHANNEL = "aeron:udp?endpoint=localhost:8096";
-    private static final String SRC_REPLICATION_CHANNEL = "aeron:udp?endpoint=localhost:8040";
-    private static final String DST_REPLICATION_CHANNEL = "aeron:udp?endpoint=localhost:8041";
+    private static final String SRC_REPLICATION_CHANNEL = "aeron:udp?endpoint=localhost:0";
+    private static final String DST_REPLICATION_CHANNEL = "aeron:udp?endpoint=localhost:0";
+    private static final long TIMER_INTERVAL_NS = TimeUnit.MILLISECONDS.toNanos(15);
 
     private static final int LIVE_STREAM_ID = 1033;
     private static final String LIVE_CHANNEL = new ChannelUriStringBuilder()
@@ -68,9 +70,9 @@ public class ReplicateRecordingTest
         .termLength(TERM_LENGTH)
         .build();
 
-    private TestMediaDriver srcMediaDriver;
+    private TestMediaDriver srcDriver;
     private Archive srcArchive;
-    private TestMediaDriver dstMediaDriver;
+    private TestMediaDriver dstDriver;
     private Archive dstArchive;
     private Aeron srcAeron;
     private Aeron dstAeron;
@@ -86,13 +88,14 @@ public class ReplicateRecordingTest
         final String srcAeronDirectoryName = generateRandomDirName();
         final String dstAeronDirectoryName = generateRandomDirName();
 
-        srcMediaDriver = TestMediaDriver.launch(
+        srcDriver = TestMediaDriver.launch(
             new MediaDriver.Context()
                 .aeronDirectoryName(srcAeronDirectoryName)
                 .termBufferSparseFile(true)
                 .threadingMode(ThreadingMode.SHARED)
                 .errorHandler(Tests::onError)
                 .spiesSimulateConnection(true)
+                .timerIntervalNs(TIMER_INTERVAL_NS)
                 .dirDeleteOnStart(true), testWatcher);
 
         srcArchive = Archive.launch(
@@ -106,15 +109,17 @@ public class ReplicateRecordingTest
                 .deleteArchiveOnStart(true)
                 .archiveDir(new File(SystemUtil.tmpDirName(), "src-archive"))
                 .fileSyncLevel(0)
+                .errorHandler(Tests::onError)
                 .threadingMode(ArchiveThreadingMode.SHARED));
 
-        dstMediaDriver = TestMediaDriver.launch(
+        dstDriver = TestMediaDriver.launch(
             new MediaDriver.Context()
                 .aeronDirectoryName(dstAeronDirectoryName)
                 .termBufferSparseFile(true)
                 .threadingMode(ThreadingMode.SHARED)
                 .errorHandler(Tests::onError)
                 .spiesSimulateConnection(true)
+                .timerIntervalNs(TIMER_INTERVAL_NS)
                 .dirDeleteOnStart(true), testWatcher);
 
         dstArchive = Archive.launch(
@@ -128,6 +133,7 @@ public class ReplicateRecordingTest
                 .deleteArchiveOnStart(true)
                 .archiveDir(new File(SystemUtil.tmpDirName(), "dst-archive"))
                 .fileSyncLevel(0)
+                .errorHandler(Tests::onError)
                 .threadingMode(ArchiveThreadingMode.SHARED));
 
         srcAeron = Aeron.connect(
@@ -163,13 +169,13 @@ public class ReplicateRecordingTest
             dstAeron,
             srcArchive,
             dstArchive,
-            dstMediaDriver,
-            srcMediaDriver);
+            dstDriver,
+            srcDriver);
 
         dstArchive.context().deleteDirectory();
-        dstMediaDriver.context().deleteDirectory();
+        dstDriver.context().deleteDirectory();
         srcArchive.context().deleteDirectory();
-        srcMediaDriver.context().deleteDirectory();
+        srcDriver.context().deleteDirectory();
     }
 
     @Test

@@ -175,8 +175,8 @@ class ReplaySession implements Session, AutoCloseable
     public void close()
     {
         final CountedErrorHandler errorHandler = controlSession.archiveConductor().context().countedErrorHandler();
-        CloseHelper.close(errorHandler, fileChannel);
         CloseHelper.close(errorHandler, publication);
+        CloseHelper.close(errorHandler, fileChannel);
     }
 
     public long sessionId()
@@ -252,15 +252,10 @@ class ReplaySession implements Session, AutoCloseable
 
     void sendPendingError(final ControlResponseProxy controlResponseProxy)
     {
-        final String errorMessage = this.errorMessage;
-        if (null != errorMessage)
+        if (null != errorMessage && !controlSession.isDone())
         {
             onPendingError(sessionId, recordingId, errorMessage);
-            final ControlSession controlSession = this.controlSession;
-            if (!controlSession.isDone())
-            {
-                controlSession.attemptErrorResponse(correlationId, errorMessage, controlResponseProxy);
-            }
+            controlSession.attemptErrorResponse(correlationId, errorMessage, controlResponseProxy);
         }
     }
 
@@ -329,7 +324,7 @@ class ReplaySession implements Session, AutoCloseable
             return 0;
         }
 
-        if (null != limitPosition && replayPosition >= stopPosition && noNewData(replayPosition, stopPosition))
+        if (replayPosition >= stopPosition && null != limitPosition && noNewData(replayPosition, stopPosition))
         {
             return 0;
         }
@@ -339,86 +334,87 @@ class ReplaySession implements Session, AutoCloseable
             nextTerm();
         }
 
+        int workCount = 0;
         final int bytesRead = readRecording(stopPosition - replayPosition);
-        if (0 == bytesRead)
+        if (bytesRead > 0)
         {
-            return 0;
-        }
+            int batchOffset = 0;
+            int paddingFrameLength = 0;
+            final int sessionId = publication.sessionId();
+            final int streamId = publication.streamId();
+            final long remaining = replayLimit - replayPosition;
+            final Checksum checksum = this.checksum;
+            final UnsafeBuffer replayBuffer = this.replayBuffer;
 
-        int batchOffset = 0;
-        int paddingFrameLength = 0;
-        final int sessionId = publication.sessionId();
-        final int streamId = publication.streamId();
-        final long remaining = replayLimit - replayPosition;
-        final Checksum checksum = this.checksum;
-        final UnsafeBuffer replayBuffer = this.replayBuffer;
-
-        while (batchOffset < bytesRead && batchOffset < remaining)
-        {
-            final int frameLength = frameLength(replayBuffer, batchOffset);
-            if (frameLength <= 0)
+            while (batchOffset < bytesRead && batchOffset < remaining)
             {
-                raiseError(bytesRead, batchOffset, remaining);
-            }
-
-            final int frameType = frameType(replayBuffer, batchOffset);
-            final int alignedLength = align(frameLength, FRAME_ALIGNMENT);
-
-            if (HDR_TYPE_DATA == frameType)
-            {
-                if (batchOffset + alignedLength > bytesRead)
+                final int frameLength = frameLength(replayBuffer, batchOffset);
+                if (frameLength <= 0)
                 {
+                    raiseError(frameLength, bytesRead, batchOffset, remaining);
+                }
+
+                final int frameType = frameType(replayBuffer, batchOffset);
+                final int alignedLength = align(frameLength, FRAME_ALIGNMENT);
+
+                if (HDR_TYPE_DATA == frameType)
+                {
+                    if (batchOffset + alignedLength > bytesRead)
+                    {
+                        break;
+                    }
+
+                    if (null != checksum)
+                    {
+                        verifyChecksum(checksum, batchOffset, alignedLength);
+                    }
+
+                    replayBuffer.putInt(batchOffset + SESSION_ID_FIELD_OFFSET, sessionId, LITTLE_ENDIAN);
+                    replayBuffer.putInt(batchOffset + STREAM_ID_FIELD_OFFSET, streamId, LITTLE_ENDIAN);
+                    batchOffset += alignedLength;
+                }
+                else if (HDR_TYPE_PAD == frameType)
+                {
+                    paddingFrameLength = frameLength;
                     break;
                 }
+            }
 
-                if (null != checksum)
+            if (batchOffset > 0)
+            {
+                final long position = publication.offerBlock(replayBuffer, 0, batchOffset);
+                if (hasPublicationAdvanced(position, batchOffset))
                 {
-                    verifyChecksum(checksum, batchOffset, alignedLength);
+                    workCount++;
                 }
+                else
+                {
+                    paddingFrameLength = 0;
+                }
+            }
 
-                replayBuffer.putInt(batchOffset + SESSION_ID_FIELD_OFFSET, sessionId, LITTLE_ENDIAN);
-                replayBuffer.putInt(batchOffset + STREAM_ID_FIELD_OFFSET, streamId, LITTLE_ENDIAN);
-                batchOffset += alignedLength;
-            }
-            else if (HDR_TYPE_PAD == frameType)
+            if (paddingFrameLength > 0)
             {
-                paddingFrameLength = frameLength;
-                break;
-            }
-        }
-
-        int workCount = 0;
-        if (batchOffset > 0)
-        {
-            final long position = publication.offerBlock(replayBuffer, 0, batchOffset);
-            if (hasPublicationAdvanced(position, batchOffset))
-            {
-                workCount++;
-            }
-            else
-            {
-                paddingFrameLength = 0;
-            }
-        }
-
-        if (paddingFrameLength > 0)
-        {
-            final long position = publication.appendPadding(paddingFrameLength - HEADER_LENGTH);
-            if (hasPublicationAdvanced(position, align(paddingFrameLength, FRAME_ALIGNMENT)))
-            {
-                workCount++;
+                final long position = publication.appendPadding(paddingFrameLength - HEADER_LENGTH);
+                if (hasPublicationAdvanced(position, align(paddingFrameLength, FRAME_ALIGNMENT)))
+                {
+                    workCount++;
+                }
             }
         }
 
         return workCount;
     }
 
-    private void raiseError(final int bytesRead, final int batchOffset, final long remaining)
+    private void raiseError(final int frameLength, final int bytesRead, final int batchOffset, final long remaining)
     {
-        throw new IllegalStateException(
-            "unexpected end of recording " + recordingId + " at replayPosition=" + replayPosition +
-            " remaining=" + remaining + " limitPosition=" + limitPosition +
-            " batchOffset=" + batchOffset + " bytesRead=" + bytesRead);
+        throw new IllegalStateException("unexpected end of recording " + recordingId +
+            " frameLength=" + frameLength +
+            " replayPosition=" + replayPosition +
+            " remaining=" + remaining +
+            " limitPosition=" + limitPosition +
+            " batchOffset=" + batchOffset +
+            " bytesRead=" + bytesRead);
     }
 
     private boolean hasPublicationAdvanced(final long position, final int alignedLength)
@@ -437,7 +433,7 @@ class ReplaySession implements Session, AutoCloseable
         }
         else if (Publication.CLOSED == position || Publication.NOT_CONNECTED == position)
         {
-            onError("stream closed before replay is complete");
+            onError("stream closed before replay complete");
         }
 
         return false;
@@ -486,8 +482,8 @@ class ReplaySession implements Session, AutoCloseable
 
     private void onError(final String errorMessage)
     {
-        state(State.INACTIVE);
         this.errorMessage = errorMessage;
+        state(State.INACTIVE);
     }
 
     private boolean noNewData(final long replayPosition, final long oldStopPosition)

@@ -17,9 +17,17 @@ package io.aeron.exceptions;
 
 /**
  * Client timeout event received from the driver for this client.
+ * <p>
+ * This is likely to happen as a result of a GC pause that is longer than the {@code aeron.client.liveness.timeout}
+ * setting.
  */
 public class ClientTimeoutException extends TimeoutException
 {
+    /**
+     * Construct the client timeout exception with detail message.
+     *
+     * @param message detail for the exception.
+     */
     public ClientTimeoutException(final String message)
     {
         super(message, Category.FATAL);

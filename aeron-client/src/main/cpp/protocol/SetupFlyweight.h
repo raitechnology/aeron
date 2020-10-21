@@ -20,10 +20,8 @@
 #include <cstdint>
 #include <string>
 #include <cstddef>
-#include <command/Flyweight.h>
-#include <concurrent/AtomicBuffer.h>
-#include <util/Index.h>
-#include "HeaderFlyweight.h"
+#include "command/Flyweight.h"
+#include "protocol/HeaderFlyweight.h"
 
 namespace aeron { namespace protocol
 {
@@ -136,7 +134,7 @@ public:
         return *this;
     }
 
-    inline static std::int32_t headerLength()
+    inline static constexpr std::int32_t headerLength()
     {
         return sizeof(SetupDefn);
     }

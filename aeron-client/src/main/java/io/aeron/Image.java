@@ -32,8 +32,8 @@ import static io.aeron.protocol.DataHeaderFlyweight.TERM_ID_FIELD_OFFSET;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
 
 /**
- * Represents a replicated publication {@link Image} from a publisher to a {@link Subscription}.
- * Each {@link Image} identifies a source publisher by session id.
+ * Represents a replicated {@link Publication} from a which matches a {@link Subscription}.
+ * Each {@link Image} identifies a source {@link Publication} by {@link #sessionId()}.
  * <p>
  * By default fragmented messages are not reassembled before delivery. If an application must
  * receive whole messages, whether or not they were fragmented, then the Subscriber
@@ -680,8 +680,8 @@ public class Image
 
         final long position = subscriberPosition.get();
         final int offset = (int)position & termLengthMask;
+        final int limitOffset = Math.min(offset + blockLengthLimit, termLengthMask + 1);
         final UnsafeBuffer termBuffer = activeTermBuffer(position);
-        final int limitOffset = Math.min(offset + blockLengthLimit, termBuffer.capacity());
         final int resultingOffset = TermBlockScanner.scan(termBuffer, offset, limitOffset);
         final int length = resultingOffset - offset;
 

@@ -18,12 +18,8 @@
 #include <thread>
 #include <Context.h>
 #include <cstdlib>
+#include <cinttypes>
 
-#define __STDC_FORMAT_MACROS
-
-#include <inttypes.h>
-
-#include "util/MemoryMappedFile.h"
 #include "util/CommandOptionParser.h"
 #include "Aeron.h"
 
@@ -65,14 +61,13 @@ Settings parseCmdLine(CommandOptionParser &cp, int argc, char **argv)
 std::string formatDate(const char *format, std::int64_t millisecondsSinceEpoch)
 {
     milliseconds msSinceEpoch(millisecondsSinceEpoch);
-    milliseconds msAfterSec(millisecondsSinceEpoch % 1000);
     system_clock::time_point tp(msSinceEpoch);
 
     std::time_t tm = system_clock::to_time_t(tp);
 
     char timeBuffer[80];
 
-    struct tm localTm;
+    struct tm localTm{};
 
 #ifdef _MSC_VER
     localtime_s(&localTm, &tm);

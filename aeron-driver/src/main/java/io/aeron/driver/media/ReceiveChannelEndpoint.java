@@ -21,20 +21,17 @@ import io.aeron.driver.DataPacketDispatcher;
 import io.aeron.driver.DriverConductorProxy;
 import io.aeron.driver.MediaDriver;
 import io.aeron.driver.PublicationImage;
-import io.aeron.driver.status.ReceiveLocalSocketAddress;
 import io.aeron.exceptions.AeronException;
 import io.aeron.exceptions.ControlProtocolException;
 import io.aeron.protocol.*;
 import io.aeron.status.LocalSocketAddressStatus;
 import io.aeron.status.ChannelEndpointStatus;
-import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Hashing;
 import org.agrona.collections.Int2IntCounterMap;
 import org.agrona.collections.Long2LongCounterMap;
 import org.agrona.concurrent.CachedNanoClock;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.status.AtomicCounter;
-import org.agrona.concurrent.status.CountersManager;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -46,13 +43,28 @@ import static io.aeron.driver.status.SystemCounterDescriptor.SHORT_SENDS;
 import static io.aeron.protocol.StatusMessageFlyweight.SEND_SETUP_FLAG;
 import static io.aeron.status.ChannelEndpointStatus.status;
 
+abstract class ReceiveChannelEndpointHotFields extends UdpChannelTransport
+{
+    long timeOfLastActivityNs;
+
+    ReceiveChannelEndpointHotFields(
+        final UdpChannel udpChannel,
+        final InetSocketAddress endPointAddress,
+        final InetSocketAddress bindAddress,
+        final InetSocketAddress connectAddress,
+        final MediaDriver.Context context)
+    {
+        super(udpChannel, endPointAddress, bindAddress, connectAddress, context);
+    }
+}
+
 /**
  * Aggregator of multiple subscriptions onto a single transport channel for receiving of data and setup frames
  * plus sending status and NAK frames.
  */
-public class ReceiveChannelEndpoint extends UdpChannelTransport
+public class ReceiveChannelEndpoint extends ReceiveChannelEndpointHotFields
 {
-    private static final long DESTINATION_ADDRESS_TIMEOUT = TimeUnit.SECONDS.toNanos(5);
+    static final long DESTINATION_ADDRESS_TIMEOUT = TimeUnit.SECONDS.toNanos(5);
 
     private final DataPacketDispatcher dispatcher;
     private final ByteBuffer smBuffer;
@@ -72,7 +84,6 @@ public class ReceiveChannelEndpoint extends UdpChannelTransport
 
     private final long receiverId;
     private InetSocketAddress currentControlAddress;
-    private long timeOfLastActivityNs;
     private AtomicCounter localSocketAddressIndicator;
 
     public ReceiveChannelEndpoint(
@@ -103,25 +114,23 @@ public class ReceiveChannelEndpoint extends UdpChannelTransport
         final String groupTagValue = udpChannel.channelUri().get(CommonContext.GROUP_TAG_PARAM_NAME);
         groupTag = null == groupTagValue ? context.receiverGroupTag() : Long.valueOf(groupTagValue);
 
-        multiRcvDestination = udpChannel.isManualControlMode() ?
-            new MultiRcvDestination(context.nanoClock(), DESTINATION_ADDRESS_TIMEOUT, errorHandler) : null;
+        multiRcvDestination = udpChannel.isManualControlMode() ? new MultiRcvDestination() : null;
         currentControlAddress = udpChannel.localControl();
     }
 
     /**
-     * Allocate a channel binding status counter, if required (not used by control-mode=manual).
+     * Set a channel binding status counter, if required (not used by control-mode=manual).
      *
-     * @param tempBuffer      to hold transient counter key/label information.
-     * @param countersManager to use to create the counter.
+     * @param counter to be set.
      */
-    public void allocateLocalSocketAddressIndicator(
-        final MutableDirectBuffer tempBuffer, final CountersManager countersManager)
+    public void localSocketAddressIndicator(final AtomicCounter counter)
     {
-        if (null == multiRcvDestination)
+        if (null != multiRcvDestination)
         {
-            localSocketAddressIndicator = ReceiveLocalSocketAddress.allocate(
-                tempBuffer, countersManager, statusIndicator.id());
+            throw new IllegalStateException("local socket address indicator not used for MDS");
         }
+
+        localSocketAddressIndicator = counter;
     }
 
     /**
@@ -175,7 +184,7 @@ public class ReceiveChannelEndpoint extends UdpChannelTransport
         if (currentStatus != ChannelEndpointStatus.INITIALIZING)
         {
             throw new AeronException(
-                "channel cannot be registered unless INITIALISING: status=" + status(currentStatus));
+                "channel cannot be registered unless INITIALIZING: status=" + status(currentStatus));
         }
 
         if (null == multiRcvDestination)
@@ -200,12 +209,9 @@ public class ReceiveChannelEndpoint extends UdpChannelTransport
 
     public void closeStatusIndicator()
     {
-        if (!statusIndicator.isClosed())
-        {
-            statusIndicator.close();
-        }
+        statusIndicator.close();
 
-        if (null != localSocketAddressIndicator && !localSocketAddressIndicator.isClosed())
+        if (null != localSocketAddressIndicator)
         {
             localSocketAddressIndicator.close();
         }
@@ -215,7 +221,7 @@ public class ReceiveChannelEndpoint extends UdpChannelTransport
     {
         if (null != multiRcvDestination)
         {
-            multiRcvDestination.close(poller);
+            multiRcvDestination.close(errorHandler, poller);
         }
     }
 
@@ -648,7 +654,7 @@ public class ReceiveChannelEndpoint extends UdpChannelTransport
     {
         final int bytesSent = null == multiRcvDestination ?
             sendTo(buffer, imageConnections[0].controlAddress) :
-            multiRcvDestination.sendToAll(imageConnections, buffer, bytesToSend);
+            multiRcvDestination.sendToAll(imageConnections, buffer, bytesToSend, cachedNanoClock.nanoTime());
 
         if (bytesToSend != bytesSent)
         {

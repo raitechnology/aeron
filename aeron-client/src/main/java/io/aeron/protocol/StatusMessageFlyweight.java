@@ -42,24 +42,68 @@ public class StatusMessageFlyweight extends HeaderFlyweight
      */
     public static final short SEND_SETUP_FLAG = 0x80;
 
+    /**
+     * Offset in the frame at which the session-id field begins.
+     */
     private static final int SESSION_ID_FIELD_OFFSET = 8;
+
+    /**
+     * Offset in the frame at which the stream-id field begins.
+     */
     private static final int STREAM_ID_FIELD_OFFSET = 12;
+
+    /**
+     * Offset in the frame at which the consumption term-id field begins.
+     */
     private static final int CONSUMPTION_TERM_ID_FIELD_OFFSET = 16;
+
+    /**
+     * Offset in the frame at which the consumption term-offset field begins.
+     */
     private static final int CONSUMPTION_TERM_OFFSET_FIELD_OFFSET = 20;
+
+    /**
+     * Offset in the frame at which the receiver window length field begins.
+     */
     private static final int RECEIVER_WINDOW_FIELD_OFFSET = 24;
+
+    /**
+     * Offset in the frame at which the receiver-id field begins.
+     */
     private static final int RECEIVER_ID_FIELD_OFFSET = 28;
+
+    /**
+     * Offset in the frame at which the ASF field begins.
+     */
     private static final int APP_SPECIFIC_FEEDBACK_FIELD_OFFSET = 36;
+
+    /**
+     * Offset in the frame at which the gtag field begins.
+     */
     private static final int GROUP_TAG_FIELD_OFFSET = APP_SPECIFIC_FEEDBACK_FIELD_OFFSET;
 
+    /**
+     * Default constructor which can later be use to wrap a frame.
+     */
     public StatusMessageFlyweight()
     {
     }
 
+    /**
+     * Construct the flyweight over a frame.
+     *
+     * @param buffer containing the frame.
+     */
     public StatusMessageFlyweight(final ByteBuffer buffer)
     {
         super(buffer);
     }
 
+    /**
+     * Construct the flyweight over a frame.
+     *
+     * @param buffer containing the frame.
+     */
     public StatusMessageFlyweight(final UnsafeBuffer buffer)
     {
         super(buffer);
@@ -78,8 +122,8 @@ public class StatusMessageFlyweight extends HeaderFlyweight
     /**
      * Set the session-id of the stream.
      *
-     * @param sessionId field value
-     * @return flyweight
+     * @param sessionId field value.
+     * @return this for a fluent API.
      */
     public StatusMessageFlyweight sessionId(final int sessionId)
     {
@@ -101,8 +145,8 @@ public class StatusMessageFlyweight extends HeaderFlyweight
     /**
      * Set the session-id for the stream.
      *
-     * @param streamId field value
-     * @return flyweight
+     * @param streamId field value.
+     * @return this for a fluent API.
      */
     public StatusMessageFlyweight streamId(final int streamId)
     {
@@ -124,8 +168,8 @@ public class StatusMessageFlyweight extends HeaderFlyweight
     /**
      * Set the highest consumption offset within the term.
      *
-     * @param termOffset field value
-     * @return flyweight
+     * @param termOffset field value.
+     * @return this for a fluent API.
      */
     public StatusMessageFlyweight consumptionTermOffset(final int termOffset)
     {
@@ -147,8 +191,8 @@ public class StatusMessageFlyweight extends HeaderFlyweight
     /**
      * Set the highest consumption term-id.
      *
-     * @param termId field value
-     * @return flyweight
+     * @param termId field value.
+     * @return this for a fluent API.
      */
     public StatusMessageFlyweight consumptionTermId(final int termId)
     {
@@ -170,8 +214,8 @@ public class StatusMessageFlyweight extends HeaderFlyweight
     /**
      * Set the receiver window length they will accept.
      *
-     * @param receiverWindowLength field value
-     * @return flyweight
+     * @param receiverWindowLength field value.
+     * @return this for a fluent API.
      */
     public StatusMessageFlyweight receiverWindowLength(final int receiverWindowLength)
     {
@@ -194,7 +238,7 @@ public class StatusMessageFlyweight extends HeaderFlyweight
      * Identifier for the receiver to distinguish them for FlowControl strategies.
      *
      * @param id for the receiver to distinguish them for FlowControl strategies.
-     * @return flyweight
+     * @return this for a fluent API.
      */
     public StatusMessageFlyweight receiverId(final long id)
     {
@@ -237,8 +281,8 @@ public class StatusMessageFlyweight extends HeaderFlyweight
     /**
      * Set the Receiver Group Tag for the Status Message.
      *
-     * @param groupTag value to set if not null
-     * @return flyweight
+     * @param groupTag value to set if not null.
+     * @return this for a fluent API.
      */
     public StatusMessageFlyweight groupTag(final Long groupTag)
     {
@@ -302,7 +346,7 @@ public class StatusMessageFlyweight extends HeaderFlyweight
      * Set long value into a field that is not aligned on an 8 byte boundary.
      *
      * @param offset of the field to put.
-     * @param value of the field to pu.
+     * @param value of the field to put.
      * @return this for fluent API.
      */
     public StatusMessageFlyweight putLongUnaligned(final int offset, final long value)

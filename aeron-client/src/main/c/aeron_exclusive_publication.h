@@ -46,6 +46,11 @@ typedef struct aeron_exclusive_publication_stct
     int32_t initial_term_id;
     int32_t term_buffer_length;
 
+    int32_t position_limit_counter_id;
+    int32_t channel_status_indicator_id;
+    aeron_notification_t on_close_complete;
+    void *on_close_complete_clientd;
+
     bool is_closed;
 
     uint8_t pre_fields_padding[AERON_CACHE_LINE_LENGTH];
@@ -63,7 +68,9 @@ int aeron_exclusive_publication_create(
     const char *channel,
     int32_t stream_id,
     int32_t session_id,
+    int32_t position_limit_counter_id,
     int64_t *position_limit_addr,
+    int32_t channel_status_indicator_id,
     int64_t *channel_status_addr,
     aeron_log_buffer_t *log_buffer,
     int64_t original_registration_id,
@@ -88,8 +95,7 @@ inline void aeron_exclusive_publication_rotate_term(aeron_exclusive_publication_
 }
 
 inline int64_t aeron_exclusive_publication_new_position(
-    aeron_exclusive_publication_t *publication,
-    int32_t resulting_offset)
+    aeron_exclusive_publication_t *publication, int32_t resulting_offset)
 {
     if (resulting_offset > 0)
     {

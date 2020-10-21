@@ -18,17 +18,14 @@
 #define AERON_CONTEXT_H
 
 #include <memory>
-#include <util/Exceptions.h>
-#include <concurrent/AgentRunner.h>
-#include <concurrent/broadcast/CopyBroadcastReceiver.h>
-#include <concurrent/CountersReader.h>
-#include <CncFileDescriptor.h>
-#include <iostream>
+#include "concurrent/AgentRunner.h"
+#include "concurrent/broadcast/CopyBroadcastReceiver.h"
+#include "concurrent/CountersReader.h"
+#include "CncFileDescriptor.h"
 
 namespace aeron
 {
 
-using namespace aeron::concurrent::logbuffer;
 using namespace aeron::concurrent::broadcast;
 using namespace aeron::concurrent;
 
@@ -235,7 +232,7 @@ public:
      */
     inline std::string cncFileName()
     {
-        return m_dirName + "/" + CncFileDescriptor::CNC_FILE;
+        return m_dirName + std::string(1, AERON_FILE_SEP) + CncFileDescriptor::CNC_FILE;
     }
 
     /**
@@ -379,7 +376,7 @@ public:
 
     /**
      * Set the amount of time, in milliseconds, that this client will to linger inactive connections and internal
-     * arrays before they are free'd.
+     * arrays before they are freed.
      *
      * @param value Number of milliseconds.
      * @return reference to this Context instance
@@ -414,64 +411,10 @@ public:
         return *this;
     }
 
-    static void requestDriverTermination(
+    static bool requestDriverTermination(
         const std::string &directory, const std::uint8_t *tokenBuffer, std::size_t tokenLength);
 
-    inline static std::string tmpDir()
-    {
-#if defined(_MSC_VER)
-        static char buff[MAX_PATH+1];
-        std::string dir = "";
-
-        if (::GetTempPath(MAX_PATH, &buff[0]) > 0)
-        {
-            dir = buff;
-        }
-
-        return dir;
-#else
-        std::string dir = "/tmp";
-
-        if (::getenv("TMPDIR"))
-        {
-            dir = ::getenv("TMPDIR");
-        }
-
-        return dir;
-#endif
-    }
-
-    inline static std::string getUserName()
-    {
-        const char *username = ::getenv("USER");
-#if (_MSC_VER)
-        if (nullptr == username)
-        {
-            username = ::getenv("USERNAME");
-            if (nullptr == username)
-            {
-                 username = "default";
-            }
-        }
-#else
-        if (nullptr == username)
-        {
-            username = "default";
-        }
-#endif
-        return username;
-    }
-
-    inline static std::string defaultAeronPath()
-    {
-#if defined(__linux__)
-        return "/dev/shm/aeron-" + getUserName();
-#elif (_MSC_VER)
-        return tmpDir() + "aeron-" + getUserName();
-#else
-        return tmpDir() + "/aeron-" + getUserName();
-#endif
-    }
+    static std::string defaultAeronPath();
 
 private:
     std::string m_dirName = defaultAeronPath();

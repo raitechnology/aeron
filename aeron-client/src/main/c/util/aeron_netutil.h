@@ -17,9 +17,9 @@
 #ifndef AERON_NETUTIL_H
 #define AERON_NETUTIL_H
 
-#include "aeron_socket.h"
 #include <stdbool.h>
 #include <stdio.h>
+#include "aeron_socket.h"
 #include "aeron_common.h"
 
 #define AERON_NETUTIL_FORMATTED_MAX_LENGTH (INET6_ADDRSTRLEN + 8)
@@ -60,6 +60,8 @@ void aeron_set_getifaddrs(aeron_getifaddrs_func_t get_func, aeron_freeifaddrs_fu
 int aeron_interface_parse_and_resolve(const char *interface_str, struct sockaddr_storage *sockaddr, size_t *prefixlen);
 
 void aeron_set_ipv4_wildcard_host_and_port(struct sockaddr_storage *sockaddr);
+
+void aeron_set_ipv6_wildcard_host_and_port(struct sockaddr_storage *sockaddr);
 
 bool aeron_ipv4_does_prefix_match(struct in_addr *in_addr1, struct in_addr *in_addr2, size_t prefixlen);
 

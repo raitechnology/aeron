@@ -19,12 +19,10 @@
 #define _GNU_SOURCE
 #endif
 
-#include "aeron_socket.h"
 #include <stdio.h>
 #include "util/aeron_arrayutil.h"
 #include "media/aeron_receive_channel_endpoint.h"
 #include "aeron_driver_receiver.h"
-#include "aeron_publication_image.h"
 
 #if !defined(HAVE_STRUCT_MMSGHDR)
 struct mmsghdr
@@ -69,6 +67,7 @@ int aeron_driver_receiver_init(
         context->udp_channel_incoming_interceptor_bindings,
         context->udp_channel_transport_bindings,
         aeron_receive_channel_endpoint_dispatch,
+        context,
         AERON_UDP_CHANNEL_TRANSPORT_AFFINITY_RECEIVER) < 0)
     {
         return -1;
@@ -106,7 +105,7 @@ int aeron_driver_receiver_init(
     return 0;
 }
 
-void aeron_driver_receiver_on_command(void *clientd, volatile void *item)
+void aeron_driver_receiver_on_command(void *clientd, void *item)
 {
     aeron_driver_receiver_t *receiver = (aeron_driver_receiver_t *)clientd;
     aeron_command_base_t *cmd = (aeron_command_base_t *)item;
@@ -206,7 +205,7 @@ int aeron_driver_receiver_do_work(void *clientd)
                 }
 
                 aeron_array_fast_unordered_remove(
-                    (uint8_t *) receiver->pending_setups.array,
+                    (uint8_t *)receiver->pending_setups.array,
                     sizeof(aeron_driver_receiver_pending_setup_entry_t),
                     (size_t)i,
                     (size_t)last_index);
@@ -292,7 +291,7 @@ void aeron_driver_receiver_on_remove_endpoint(void *clientd, void *command)
         if (entry->endpoint == endpoint)
         {
             aeron_array_fast_unordered_remove(
-                (uint8_t *) receiver->pending_setups.array,
+                (uint8_t *)receiver->pending_setups.array,
                 sizeof(aeron_driver_receiver_pending_setup_entry_t),
                 (size_t)i,
                 (size_t)last_index);
@@ -338,8 +337,6 @@ void aeron_driver_receiver_on_add_subscription_by_session(void *clientd, void *i
     {
         AERON_DRIVER_RECEIVER_ERROR(receiver, "receiver on_add_subscription: %s", aeron_errmsg());
     }
-
-    aeron_driver_conductor_proxy_on_delete_cmd(receiver->context->conductor_proxy, item);
 }
 
 void aeron_driver_receiver_on_remove_subscription_by_session(void *clientd, void *item)
@@ -352,8 +349,6 @@ void aeron_driver_receiver_on_remove_subscription_by_session(void *clientd, void
     {
         AERON_DRIVER_RECEIVER_ERROR(receiver, "receiver on_remove_subscription: %s", aeron_errmsg());
     }
-
-    aeron_driver_conductor_proxy_on_delete_cmd(receiver->context->conductor_proxy, item);
 }
 
 void aeron_driver_receiver_on_add_destination(void *clientd, void *item)
@@ -367,6 +362,17 @@ void aeron_driver_receiver_on_add_destination(void *clientd, void *item)
     {
         AERON_DRIVER_RECEIVER_ERROR(receiver, "on_add_destination, add to endpoint: %s", aeron_errmsg());
         return;
+    }
+
+    if (aeron_udp_channel_interceptors_transport_notifications(
+        destination->data_paths,
+        &destination->transport,
+        destination->conductor_fields.udp_channel,
+        &endpoint->dispatcher,
+        AERON_UDP_CHANNEL_INTERCEPTOR_ADD_NOTIFICATION) < 0)
+    {
+        AERON_DRIVER_RECEIVER_ERROR(
+            receiver, "on_add_destination, interceptors transport notifications: %s", aeron_errmsg());
     }
 
     if (endpoint->transport_bindings->poller_add_func(&receiver->poller, &destination->transport) < 0)
@@ -414,6 +420,17 @@ void aeron_driver_receiver_on_remove_destination(void *clientd, void *item)
 
     if (0 < aeron_receive_channel_endpoint_remove_destination(endpoint, channel, &destination) && NULL != destination)
     {
+        if (aeron_udp_channel_interceptors_transport_notifications(
+            destination->data_paths,
+            &destination->transport,
+            destination->conductor_fields.udp_channel,
+            &endpoint->dispatcher,
+            AERON_UDP_CHANNEL_INTERCEPTOR_REMOVE_NOTIFICATION) < 0)
+        {
+            AERON_DRIVER_RECEIVER_ERROR(
+                receiver, "on_add_destination, interceptors transport notifications: %s", aeron_errmsg());
+        }
+
         endpoint->transport_bindings->poller_remove_func(&receiver->poller, &destination->transport);
         endpoint->transport_bindings->close_func(&destination->transport);
 

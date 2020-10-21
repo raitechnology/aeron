@@ -18,8 +18,6 @@
 #include <inttypes.h>
 
 #include "aeron_fragment_assembler.h"
-#include "aeron_alloc.h"
-#include "util/aeron_error.h"
 #include "aeron_image.h"
 
 #define AERON_BUFFER_BUILDER_MIN_ALLOCATED_CAPACITY (4096)
@@ -55,7 +53,7 @@ int aeron_buffer_builder_find_suitable_capacity(size_t current_capacity, size_t 
 
         if (new_capacity > AERON_BUFFER_BUILDER_MAX_CAPACITY)
         {
-            if (capacity == AERON_BUFFER_BUILDER_MAX_CAPACITY)
+            if (AERON_BUFFER_BUILDER_MAX_CAPACITY == capacity)
             {
                 errno = EINVAL;
                 aeron_set_err(EINVAL, "max capacity reached: %" PRId32, AERON_BUFFER_BUILDER_MAX_CAPACITY);
@@ -88,13 +86,13 @@ int aeron_buffer_builder_ensure_capacity(aeron_buffer_builder_t *buffer_builder,
             return -1;
         }
 
-        if (aeron_alloc((void **)&buffer_builder->buffer, suitable_capacity) < 0)
+        if (aeron_alloc((void **)&buffer_builder->buffer, (size_t)suitable_capacity) < 0)
         {
             aeron_set_err_from_last_err_code("%s:%d", __FILE__, __LINE__);
             return -1;
         }
 
-        buffer_builder->buffer_length = suitable_capacity;
+        buffer_builder->buffer_length = (size_t)suitable_capacity;
     }
 
     return 0;

@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#include "util/aeron_bitutil.h"
-#include "concurrent/aeron_atomic.h"
 #include "aeron_cnc_file_descriptor.h"
 
 int32_t aeron_cnc_version_volatile(aeron_cnc_metadata_t *metadata)
@@ -31,3 +29,4 @@ extern uint8_t *aeron_cnc_counters_metadata_buffer(aeron_cnc_metadata_t *metadat
 extern uint8_t *aeron_cnc_counters_values_buffer(aeron_cnc_metadata_t *metadata);
 extern uint8_t *aeron_cnc_error_log_buffer(aeron_cnc_metadata_t *metadata);
 extern size_t aeron_cnc_computed_length(size_t total_length_of_buffers, size_t alignment);
+extern bool aeron_cnc_is_file_length_sufficient(aeron_mapped_file_t *cnc_mmap);

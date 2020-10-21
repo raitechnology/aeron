@@ -16,14 +16,14 @@
 
 #include <cstdio>
 #include <thread>
-
-#define __STDC_FORMAT_MACROS
-
 #include <cinttypes>
 #include <csignal>
+#include <climits>
+#include <random>
 
 #include "util/CommandOptionParser.h"
 #include "concurrent/BusySpinIdleStrategy.h"
+#include "concurrent/SleepingIdleStrategy.h"
 #include "Configuration.h"
 #include "RateReporter.h"
 #include "Aeron.h"
@@ -33,7 +33,7 @@ using namespace aeron;
 
 std::atomic<bool> running(true);
 
-void sigIntHandler(int param)
+void sigIntHandler(int)
 {
     running = false;
 }
@@ -50,10 +50,10 @@ static const char optProgress = 'P';
 
 struct Settings
 {
-    std::string dirPrefix = "";
+    std::string dirPrefix;
     std::string channel = samples::configuration::DEFAULT_CHANNEL;
     std::int32_t streamId = samples::configuration::DEFAULT_STREAM_ID;
-    long numberOfMessages = samples::configuration::DEFAULT_NUMBER_OF_MESSAGES;
+    long long numberOfMessages = samples::configuration::DEFAULT_NUMBER_OF_MESSAGES;
     int messageLength = samples::configuration::DEFAULT_MESSAGE_LENGTH;
     int lingerTimeoutMs = samples::configuration::DEFAULT_LINGER_TIMEOUT_MS;
     bool randomMessageLength = samples::configuration::DEFAULT_RANDOM_MESSAGE_LENGTH;
@@ -74,7 +74,7 @@ Settings parseCmdLine(CommandOptionParser &cp, int argc, char **argv)
     s.dirPrefix = cp.getOption(optPrefix).getParam(0, s.dirPrefix);
     s.channel = cp.getOption(optChannel).getParam(0, s.channel);
     s.streamId = cp.getOption(optStreamId).getParamAsInt(0, 1, INT32_MAX, s.streamId);
-    s.numberOfMessages = cp.getOption(optMessages).getParamAsLong(0, 0, LONG_MAX, s.numberOfMessages);
+    s.numberOfMessages = cp.getOption(optMessages).getParamAsLong(0, 0, INT64_MAX, s.numberOfMessages);
     s.messageLength = cp.getOption(optLength).getParamAsInt(0, sizeof(std::int64_t), INT32_MAX, s.messageLength);
     s.lingerTimeoutMs = cp.getOption(optLinger).getParamAsInt(0, 0, 60 * 60 * 1000, s.lingerTimeoutMs);
     s.randomMessageLength = cp.getOption(optRandLen).isPresent();
@@ -85,12 +85,12 @@ Settings parseCmdLine(CommandOptionParser &cp, int argc, char **argv)
 
 std::atomic<bool> printingActive;
 
-void printRate(double messagesPerSec, double bytesPerSec, long totalFragments, long totalBytes)
+void printRate(double messagesPerSec, double bytesPerSec, std::int64_t totalFragments, std::int64_t totalBytes)
 {
     if (printingActive)
     {
         std::printf(
-            "%.04g msgs/sec, %.04g bytes/sec, totals %ld messages %ld MB payloads\n",
+            "%.04g msgs/sec, %.04g bytes/sec, totals %" PRId64 " messages %" PRId64 " MB payloads\n",
             messagesPerSec, bytesPerSec, totalFragments, totalBytes / (1024 * 1024));
     }
 }
@@ -189,7 +189,7 @@ int main(int argc, char **argv)
                 rateReporter.reset();
             }
 
-            for (long i = 0; i < settings.numberOfMessages && running; i++)
+            for (std::int64_t i = 0; i < settings.numberOfMessages && running; i++)
             {
                 const int length = lengthGenerator();
                 srcBuffer.putInt64(0, i);
@@ -216,7 +216,7 @@ int main(int argc, char **argv)
             }
 
             std::cout << "Done streaming. Back pressure ratio ";
-            std::cout << ((double)backPressureCount / settings.numberOfMessages) << std::endl;
+            std::cout << ((double)backPressureCount / (double)settings.numberOfMessages) << std::endl;
 
             if (running && settings.lingerTimeoutMs > 0)
             {

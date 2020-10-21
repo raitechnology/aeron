@@ -19,19 +19,9 @@
 
 extern "C"
 {
-#include <util/aeron_fileutil.h>
-#include <concurrent/aeron_atomic.h>
-#include <concurrent/aeron_distinct_error_log.h>
-#include <aeron_publication_image.h>
-#include <aeron_data_packet_dispatcher.h>
-#include <aeron_driver_receiver.h>
-#include <aeron_position.h>
-#include <aeron_publication_image.h>
-#include <media/aeron_receive_channel_endpoint.h>
-#include <media/aeron_receive_destination.h>
-#include <protocol/aeron_udp_protocol.h>
-
-#include "aeron_test_udp_bindings.h"
+#include "aeron_publication_image.h"
+#include "aeron_data_packet_dispatcher.h"
+#include "aeron_driver_receiver.h"
 
 int aeron_driver_ensure_dir_is_recreated(aeron_driver_context_t *context);
 }
@@ -41,7 +31,7 @@ int aeron_driver_ensure_dir_is_recreated(aeron_driver_context_t *context);
 #define MTU (4096)
 
 typedef std::array<std::uint8_t, CAPACITY> buffer_t;
-typedef std::array<std::uint8_t, 2 * CAPACITY> buffer_2x_t;
+typedef std::array<std::uint8_t, 4 * CAPACITY> buffer_4x_t;
 
 static bool always_measure_rtt(void *state, int64_t now_ns)
 {
@@ -58,15 +48,16 @@ TEST_F(PublicationImageTest, shouldAddAndRemoveDestination)
     const char *uri_2 = "aeron:udp?endpoint=localhost:9091";
     const char *uri_3 = "aeron:udp?endpoint=localhost:9093";
     aeron_receive_channel_endpoint_t *endpoint = createMdsEndpoint();
+    int64_t registration_id = 0;
     int32_t stream_id = 1001;
     int32_t session_id = 1000001;
-    aeron_receive_destination_t *destination = NULL;
+    aeron_receive_destination_t *destination = nullptr;
 
     aeron_udp_channel_t *channel_1 = createChannel(uri_1);
     aeron_receive_destination_t *dest_1;
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_1, channel_1, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_1, channel_1, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(1, aeron_receive_channel_endpoint_add_destination(endpoint, dest_1));
 
     aeron_publication_image_t *image = createImage(endpoint, dest_1, stream_id, session_id);
@@ -75,7 +66,7 @@ TEST_F(PublicationImageTest, shouldAddAndRemoveDestination)
     aeron_receive_destination_t *dest_2;
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_2, channel_2, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_2, channel_2, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(2, aeron_receive_channel_endpoint_add_destination(endpoint, dest_2));
 
     ASSERT_EQ(2, aeron_publication_image_add_destination(image, dest_2));
@@ -94,12 +85,12 @@ TEST_F(PublicationImageTest, shouldAddAndRemoveDestination)
 
     aeron_udp_channel_t *channel_not_added = createChannel(uri_3, &m_channels_for_tear_down);
 
-    destination = NULL;
+    destination = nullptr;
     ASSERT_EQ(0, aeron_receive_channel_endpoint_remove_destination(endpoint, channel_not_added, &destination));
     ASSERT_EQ(1u, endpoint->destinations.length);
     ASSERT_EQ(0, aeron_publication_image_remove_destination(image, channel_not_added));
     ASSERT_EQ(1u, image->connections.length);
-    ASSERT_EQ((aeron_receive_destination_t *)NULL, destination);
+    ASSERT_EQ((aeron_receive_destination_t *)nullptr, destination);
 
     aeron_udp_channel_t *remove_channel_2 = createChannel(uri_2, &m_channels_for_tear_down);
 
@@ -116,31 +107,32 @@ TEST_F(PublicationImageTest, shouldAddAndRemoveDestination)
 
 TEST_F(PublicationImageTest, shouldSendControlMessagesToAllDestinations)
 {
-    struct sockaddr_storage addr; // Don't really care what value this is.
+    struct sockaddr_storage addr{}; // Don't really care what value this is.
     uint8_t data[128];
-    aeron_data_header_t *message = reinterpret_cast<aeron_data_header_t *>(data);
+    auto *message = reinterpret_cast<aeron_data_header_t *>(data);
     const char *uri_1 = "aeron:udp?endpoint=localhost:9090";
     const char *uri_2 = "aeron:udp?endpoint=localhost:9091";
     aeron_receive_channel_endpoint_t *endpoint = createMdsEndpoint();
     int32_t stream_id = 1001;
     int32_t session_id = 1000001;
+    int64_t registration_id = 0;
 
     aeron_udp_channel_t *channel_1;
     aeron_receive_destination_t *dest_1;
     aeron_udp_channel_t *channel_2;
     aeron_receive_destination_t *dest_2;
 
-    aeron_udp_channel_parse(strlen(uri_1), uri_1, &m_resolver, &channel_1);
-    aeron_udp_channel_parse(strlen(uri_2), uri_2, &m_resolver, &channel_2);
+    aeron_udp_channel_parse(strlen(uri_1), uri_1, &m_resolver, &channel_1, false);
+    aeron_udp_channel_parse(strlen(uri_2), uri_2, &m_resolver, &channel_2, false);
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_1, channel_1, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_1, channel_1, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(1, aeron_receive_channel_endpoint_add_destination(endpoint, dest_1));
 
     aeron_publication_image_t *image = createImage(endpoint, dest_1, stream_id, session_id);
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_2, channel_2, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_2, channel_2, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(2, aeron_receive_channel_endpoint_add_destination(endpoint, dest_2));
 
     ASSERT_EQ(2, aeron_publication_image_add_destination(image, dest_2));
@@ -148,8 +140,7 @@ TEST_F(PublicationImageTest, shouldSendControlMessagesToAllDestinations)
     ASSERT_EQ(AERON_PUBLICATION_IMAGE_STATE_ACTIVE, image->conductor_fields.state);
     image->congestion_control->should_measure_rtt = always_measure_rtt;
 
-    aeron_test_udp_bindings_state_t *test_bindings_state =
-        static_cast<aeron_test_udp_bindings_state_t *>(dest_1->transport.bindings_clientd);
+    auto *test_bindings_state = static_cast<aeron_test_udp_bindings_state_t *>(dest_1->transport.bindings_clientd);
 
     aeron_publication_image_schedule_status_message(image, 1000000000, 0, TERM_BUFFER_SIZE);
     aeron_publication_image_send_pending_status_message(image);
@@ -186,33 +177,34 @@ TEST_F(PublicationImageTest, shouldSendControlMessagesToAllDestinations)
 
 TEST_F(PublicationImageTest, shouldHandleEosAcrossDestinations)
 {
-    struct sockaddr_storage addr; // Don't really care what value this is.
+    struct sockaddr_storage addr{}; // Don't really care what value this is.
     uint8_t data[128];
     memset(data, 0, sizeof(data));
 
-    aeron_data_header_t *heartbeat = reinterpret_cast<aeron_data_header_t *>(data);
+    auto *heartbeat = reinterpret_cast<aeron_data_header_t *>(data);
     const char *uri_1 = "aeron:udp?endpoint=localhost:9090";
     const char *uri_2 = "aeron:udp?endpoint=localhost:9091";
     aeron_receive_channel_endpoint_t *endpoint = createMdsEndpoint();
     int32_t stream_id = 1001;
     int32_t session_id = 1000001;
+    int64_t registration_id = 0;
 
     aeron_udp_channel_t *channel_1;
     aeron_receive_destination_t *dest_1;
     aeron_udp_channel_t *channel_2;
     aeron_receive_destination_t *dest_2;
 
-    aeron_udp_channel_parse(strlen(uri_1), uri_1, &m_resolver, &channel_1);
-    aeron_udp_channel_parse(strlen(uri_2), uri_2, &m_resolver, &channel_2);
+    aeron_udp_channel_parse(strlen(uri_1), uri_1, &m_resolver, &channel_1, false);
+    aeron_udp_channel_parse(strlen(uri_2), uri_2, &m_resolver, &channel_2, false);
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_1, channel_1, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_1, channel_1, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(1, aeron_receive_channel_endpoint_add_destination(endpoint, dest_1));
 
     aeron_publication_image_t *image = createImage(endpoint, dest_1, stream_id, session_id);
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_2, channel_2, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_2, channel_2, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(2, aeron_receive_channel_endpoint_add_destination(endpoint, dest_2));
 
     ASSERT_EQ(2, aeron_publication_image_add_destination(image, dest_2));
@@ -242,16 +234,17 @@ TEST_F(PublicationImageTest, shouldHandleEosAcrossDestinations)
     ASSERT_EQ(true, is_eos);
 }
 
-TEST_F(PublicationImageTest, shouldNotSendControlMessagesToAllDestinationThatHaventBeenActive)
+TEST_F(PublicationImageTest, shouldNotSendControlMessagesToAllDestinationThatHaveNotBeenActive)
 {
-    struct sockaddr_storage addr; // Don't really care what value this is.
+    struct sockaddr_storage addr{}; // Don't really care what value this is.
     uint8_t data[128];
-    aeron_data_header_t *message = reinterpret_cast<aeron_data_header_t *>(data);
+    auto *message = reinterpret_cast<aeron_data_header_t *>(data);
     const char *uri_1 = "aeron:udp?endpoint=localhost:9090";
     const char *uri_2 = "aeron:udp?endpoint=localhost:9091";
     aeron_receive_channel_endpoint_t *endpoint = createMdsEndpoint();
     int32_t stream_id = 1001;
     int32_t session_id = 1000001;
+    int64_t registration_id = 0;
 
     int64_t t0_ns = 1000 * 1000 * 1000;
     int64_t t0_ms = t0_ns / (1000 * 1000);
@@ -263,19 +256,19 @@ TEST_F(PublicationImageTest, shouldNotSendControlMessagesToAllDestinationThatHav
     aeron_udp_channel_t *channel_2;
     aeron_receive_destination_t *dest_2;
 
-    aeron_udp_channel_parse(strlen(uri_1), uri_1, &m_resolver, &channel_1);
-    aeron_udp_channel_parse(strlen(uri_2), uri_2, &m_resolver, &channel_2);
+    aeron_udp_channel_parse(strlen(uri_1), uri_1, &m_resolver, &channel_1, false);
+    aeron_udp_channel_parse(strlen(uri_2), uri_2, &m_resolver, &channel_2, false);
 
     aeron_clock_update_cached_time(m_context->cached_clock, t0_ms, t0_ns);
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_1, channel_1, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_1, channel_1, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(1, aeron_receive_channel_endpoint_add_destination(endpoint, dest_1));
 
     aeron_publication_image_t *image = createImage(endpoint, dest_1, stream_id, session_id);
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_2, channel_2, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_2, channel_2, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(2, aeron_receive_channel_endpoint_add_destination(endpoint, dest_2));
 
     ASSERT_EQ(2, aeron_publication_image_add_destination(image, dest_2));
@@ -283,8 +276,7 @@ TEST_F(PublicationImageTest, shouldNotSendControlMessagesToAllDestinationThatHav
     ASSERT_EQ(AERON_PUBLICATION_IMAGE_STATE_ACTIVE, image->conductor_fields.state);
     image->congestion_control->should_measure_rtt = always_measure_rtt;
 
-    aeron_test_udp_bindings_state_t *test_bindings_state =
-        static_cast<aeron_test_udp_bindings_state_t *>(dest_1->transport.bindings_clientd);
+    auto *test_bindings_state = static_cast<aeron_test_udp_bindings_state_t *>(dest_1->transport.bindings_clientd);
 
     size_t message_length = 64;
 
@@ -299,7 +291,7 @@ TEST_F(PublicationImageTest, shouldNotSendControlMessagesToAllDestinationThatHav
 
     aeron_clock_update_cached_time(m_context->cached_clock, t1_ms, t1_ns);
 
-    int32_t next_offset = (int32_t)message_length;
+    auto next_offset = (int32_t)message_length;
     message->term_offset = next_offset;
 
     aeron_publication_image_insert_packet(image, dest_2, 0, next_offset, data, message_length, &addr);
@@ -318,14 +310,15 @@ TEST_F(PublicationImageTest, shouldNotSendControlMessagesToAllDestinationThatHav
 
 TEST_F(PublicationImageTest, shouldTrackActiveTransportAccountBasedOnFrames)
 {
-    struct sockaddr_storage addr; // Don't really care what value this is.
+    struct sockaddr_storage addr{}; // Don't really care what value this is.
     uint8_t data[128];
-    aeron_data_header_t *message = reinterpret_cast<aeron_data_header_t *>(data);
+    auto *message = reinterpret_cast<aeron_data_header_t *>(data);
     const char *uri_1 = "aeron:udp?endpoint=localhost:9090";
     const char *uri_2 = "aeron:udp?endpoint=localhost:9091";
     aeron_receive_channel_endpoint_t *endpoint = createMdsEndpoint();
     int32_t stream_id = 1001;
     int32_t session_id = 1000001;
+    int64_t registration_id = 0;
 
     int64_t t0_ns = 2 * m_context->image_liveness_timeout_ns;
     int64_t t0_ms = t0_ns / (1000 * 1000);
@@ -335,19 +328,19 @@ TEST_F(PublicationImageTest, shouldTrackActiveTransportAccountBasedOnFrames)
     aeron_udp_channel_t *channel_2;
     aeron_receive_destination_t *dest_2;
 
-    aeron_udp_channel_parse(strlen(uri_1), uri_1, &m_resolver, &channel_1);
-    aeron_udp_channel_parse(strlen(uri_2), uri_2, &m_resolver, &channel_2);
+    aeron_udp_channel_parse(strlen(uri_1), uri_1, &m_resolver, &channel_1, false);
+    aeron_udp_channel_parse(strlen(uri_2), uri_2, &m_resolver, &channel_2, false);
 
     aeron_clock_update_cached_time(m_context->cached_clock, t0_ms, t0_ns);
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_1, channel_1, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_1, channel_1, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(1, aeron_receive_channel_endpoint_add_destination(endpoint, dest_1));
 
     aeron_publication_image_t *image = createImage(endpoint, dest_1, stream_id, session_id);
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_2, channel_2, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_2, channel_2, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(2, aeron_receive_channel_endpoint_add_destination(endpoint, dest_2));
 
     ASSERT_EQ(2, aeron_publication_image_add_destination(image, dest_2));
@@ -355,8 +348,7 @@ TEST_F(PublicationImageTest, shouldTrackActiveTransportAccountBasedOnFrames)
     ASSERT_EQ(AERON_PUBLICATION_IMAGE_STATE_ACTIVE, image->conductor_fields.state);
     image->congestion_control->should_measure_rtt = always_measure_rtt;
 
-    aeron_test_udp_bindings_state_t *test_bindings_state =
-        static_cast<aeron_test_udp_bindings_state_t *>(dest_1->transport.bindings_clientd);
+    auto *test_bindings_state = static_cast<aeron_test_udp_bindings_state_t *>(dest_1->transport.bindings_clientd);
 
     aeron_publication_image_schedule_status_message(image, t0_ns, 0, TERM_BUFFER_SIZE);
     aeron_publication_image_send_pending_status_message(image);
@@ -384,16 +376,17 @@ TEST_F(PublicationImageTest, shouldTrackActiveTransportAccountBasedOnFrames)
 }
 
 
-TEST_F(PublicationImageTest, shouldTrackUnderruningTransportsWithLastSmAndReceiverWindowLength)
+TEST_F(PublicationImageTest, shouldTrackUnderRunningTransportsWithLastSmAndReceiverWindowLength)
 {
-    struct sockaddr_storage addr; // Don't really care what value this is.
+    struct sockaddr_storage addr{}; // Don't really care what value this is.
     uint8_t data[128];
-    aeron_data_header_t *message = reinterpret_cast<aeron_data_header_t *>(data);
+    auto *message = reinterpret_cast<aeron_data_header_t *>(data);
     const char *uri_1 = "aeron:udp?endpoint=localhost:9090";
     const char *uri_2 = "aeron:udp?endpoint=localhost:9091";
     aeron_receive_channel_endpoint_t *endpoint = createMdsEndpoint();
     int32_t stream_id = 1001;
     int32_t session_id = 1000001;
+    int64_t registration_id = 0;
     size_t message_length = 64;
 
     int64_t t0_ns = 10 * AERON_RECEIVE_DESTINATION_TIMEOUT_NS;
@@ -404,19 +397,19 @@ TEST_F(PublicationImageTest, shouldTrackUnderruningTransportsWithLastSmAndReceiv
     aeron_udp_channel_t *channel_2;
     aeron_receive_destination_t *dest_2;
 
-    aeron_udp_channel_parse(strlen(uri_1), uri_1, &m_resolver, &channel_1);
-    aeron_udp_channel_parse(strlen(uri_2), uri_2, &m_resolver, &channel_2);
+    aeron_udp_channel_parse(strlen(uri_1), uri_1, &m_resolver, &channel_1, false);
+    aeron_udp_channel_parse(strlen(uri_2), uri_2, &m_resolver, &channel_2, false);
 
     aeron_clock_update_cached_time(m_context->cached_clock, t0_ns / (1000 * 1000), t0_ns);
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_1, channel_1, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_1, channel_1, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(1, aeron_receive_channel_endpoint_add_destination(endpoint, dest_1));
 
     aeron_publication_image_t *image = createImage(endpoint, dest_1, stream_id, session_id);
 
     ASSERT_LE(0, aeron_receive_destination_create(
-        &dest_2, channel_2, m_context, &m_counters_manager, endpoint->channel_status.counter_id));
+        &dest_2, channel_2, m_context, &m_counters_manager, registration_id, endpoint->channel_status.counter_id));
     ASSERT_EQ(2, aeron_receive_channel_endpoint_add_destination(endpoint, dest_2));
 
     ASSERT_EQ(2, aeron_publication_image_add_destination(image, dest_2));
@@ -424,8 +417,7 @@ TEST_F(PublicationImageTest, shouldTrackUnderruningTransportsWithLastSmAndReceiv
     ASSERT_EQ(AERON_PUBLICATION_IMAGE_STATE_ACTIVE, image->conductor_fields.state);
     image->congestion_control->should_measure_rtt = always_measure_rtt;
 
-    aeron_test_udp_bindings_state_t *test_bindings_state =
-        static_cast<aeron_test_udp_bindings_state_t *>(dest_1->transport.bindings_clientd);
+    auto *test_bindings_state = static_cast<aeron_test_udp_bindings_state_t *>(dest_1->transport.bindings_clientd);
 
     aeron_publication_image_schedule_status_message(image, t0_ns, 0, TERM_BUFFER_SIZE);
     aeron_publication_image_send_pending_status_message(image);

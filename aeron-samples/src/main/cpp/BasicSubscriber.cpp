@@ -21,13 +21,14 @@
 #include "Configuration.h"
 #include "util/CommandOptionParser.h"
 #include "Aeron.h"
+#include "concurrent/SleepingIdleStrategy.h"
 
 using namespace aeron::util;
 using namespace aeron;
 
 std::atomic<bool> running(true);
 
-void sigIntHandler(int param)
+void sigIntHandler(int)
 {
     running = false;
 }
@@ -42,7 +43,7 @@ static const int FRAGMENTS_LIMIT = 10;
 
 struct Settings
 {
-    std::string dirPrefix = "";
+    std::string dirPrefix;
     std::string channel = samples::configuration::DEFAULT_CHANNEL;
     std::int32_t streamId = samples::configuration::DEFAULT_STREAM_ID;
 };

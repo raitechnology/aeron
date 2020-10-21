@@ -23,7 +23,8 @@
 #include <iomanip>
 #include <locale>
 #include <cstdarg>
-#include "Exceptions.h"
+
+#include "util/Exceptions.h"
 
 namespace aeron { namespace util
 {
@@ -63,6 +64,11 @@ inline bool startsWith(const std::string &input, std::size_t position, const std
     return true;
 }
 
+inline bool endsWith(const std::string &str, const std::string &suffix)
+{
+    return str.size() >= suffix.size() && str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
 template<class valueType>
 valueType parse(const std::string &input)
 {
@@ -71,7 +77,8 @@ valueType parse(const std::string &input)
     std::istringstream stream(str);
     valueType value;
 
-    if (std::is_integral<valueType>::value && input.length() > 2 &&
+    if (std::is_integral<valueType>::value &&
+        input.length() > 2 &&
         input[0] == '0' &&
         (input[1] == 'x' || input[1] == 'X'))
     {
@@ -185,7 +192,6 @@ static T fromString(const std::string &str)
 
     return t;
 }
-
 
 }}
 

@@ -33,6 +33,7 @@ aeron_udp_channel_interceptor_bindings_t *aeron_udp_channel_interceptor_loss_loa
 void aeron_udp_channel_interceptor_loss_incoming(
     void *interceptor_state,
     aeron_udp_channel_incoming_interceptor_t *delegate,
+    aeron_udp_channel_transport_t *transport,
     void *receiver_clientd,
     void *endpoint_clientd,
     void *destination_clientd,
@@ -42,7 +43,7 @@ void aeron_udp_channel_interceptor_loss_incoming(
 
 int aeron_udp_channel_interceptor_loss_configure(const aeron_udp_channel_interceptor_loss_params_t *loss_params);
 
-int aeron_udp_channel_interceptor_loss_parse_params(char* uri, aeron_udp_channel_interceptor_loss_params_t* params);
+int aeron_udp_channel_interceptor_loss_parse_params(char *uri, aeron_udp_channel_interceptor_loss_params_t *params);
 
 int aeron_udp_channel_interceptor_loss_parse_callback(void *clientd, const char *key, const char *value);
 

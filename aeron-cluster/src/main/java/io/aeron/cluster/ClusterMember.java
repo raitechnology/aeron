@@ -32,7 +32,7 @@ import static io.aeron.archive.client.AeronArchive.NULL_POSITION;
  */
 public final class ClusterMember
 {
-    public static final ClusterMember[] EMPTY_CLUSTER_MEMBER_ARRAY = new ClusterMember[0];
+    static final ClusterMember[] EMPTY_MEMBERS = new ClusterMember[0];
 
     private boolean isBallotSent;
     private boolean isLeader;
@@ -527,7 +527,7 @@ public final class ClusterMember
     {
         if (null == value || value.length() == 0)
         {
-            return ClusterMember.EMPTY_CLUSTER_MEMBER_ARRAY;
+            return ClusterMember.EMPTY_MEMBERS;
         }
 
         final String[] memberValues = value.split("\\|");
@@ -616,6 +616,24 @@ public final class ClusterMember
     }
 
     /**
+     * Copy votes from one array of members to another where the {@link #id()}s match.
+     *
+     * @param srcMembers to copy the votes from.
+     * @param dstMembers to copy the votes to.
+     */
+    public static void copyVotes(final ClusterMember[] srcMembers, final ClusterMember[] dstMembers)
+    {
+        for (final ClusterMember srcMember : srcMembers)
+        {
+            final ClusterMember dstMember = findMember(dstMembers, srcMember.id);
+            if (null != dstMember)
+            {
+                dstMember.vote = srcMember.vote;
+            }
+        }
+    }
+
+    /**
      * Add the publications for sending status messages to the other members of the cluster.
      *
      * @param members    of the cluster.
@@ -633,25 +651,11 @@ public final class ClusterMember
     {
         for (final ClusterMember member : members)
         {
-            if (member != exclude)
+            if (member.id != exclude.id)
             {
                 channelUri.put(ENDPOINT_PARAM_NAME, member.consensusEndpoint());
                 member.publication = aeron.addExclusivePublication(channelUri.toString(), streamId);
             }
-        }
-    }
-
-    /**
-     * Close the publications associated with members of the cluster used for the consensus protocol.
-     *
-     * @param errorHandler   to capture errors during close.
-     * @param clusterMembers to close the publications for.
-     */
-    public static void closeConsensusPublications(final ErrorHandler errorHandler, final ClusterMember[] clusterMembers)
-    {
-        for (final ClusterMember member : clusterMembers)
-        {
-            member.closePublication(errorHandler);
         }
     }
 
@@ -668,6 +672,20 @@ public final class ClusterMember
     {
         channelUri.put(ENDPOINT_PARAM_NAME, member.consensusEndpoint());
         member.publication = aeron.addExclusivePublication(channelUri.toString(), streamId);
+    }
+
+    /**
+     * Close the publications associated with members of the cluster used for the consensus protocol.
+     *
+     * @param errorHandler   to capture errors during close.
+     * @param clusterMembers to close the publications for.
+     */
+    public static void closeConsensusPublications(final ErrorHandler errorHandler, final ClusterMember[] clusterMembers)
+    {
+        for (final ClusterMember member : clusterMembers)
+        {
+            member.closePublication(errorHandler);
+        }
     }
 
     /**
@@ -858,7 +876,7 @@ public final class ClusterMember
     }
 
     /**
-     * Has sufficient votes being counted for a majority for all members observed during {@link Election.State#CANVASS}?
+     * Has sufficient votes being counted for a majority for all members observed during {@link ElectionState#CANVASS}?
      *
      * @param members         to check for votes.
      * @param candidateTermId for the vote.
@@ -1073,7 +1091,7 @@ public final class ClusterMember
      * @param endpoints to check for duplicates.
      * @return true if no duplicate is found otherwise false.
      */
-    public static boolean isNotDuplicateEndpoint(final ClusterMember[] members, final String endpoints)
+    public static boolean notDuplicateEndpoint(final ClusterMember[] members, final String endpoints)
     {
         for (final ClusterMember member : members)
         {
@@ -1150,7 +1168,15 @@ public final class ClusterMember
      */
     public static ClusterMember[] removeMember(final ClusterMember[] oldMembers, final int memberId)
     {
-        return ArrayUtil.remove(oldMembers, findMemberIndex(oldMembers, memberId));
+        final int memberIndex = findMemberIndex(oldMembers, memberId);
+        if (ArrayUtil.UNKNOWN_INDEX != memberIndex && 1 == oldMembers.length)
+        {
+            return EMPTY_MEMBERS;
+        }
+        else
+        {
+            return ArrayUtil.remove(oldMembers, memberIndex);
+        }
     }
 
     /**

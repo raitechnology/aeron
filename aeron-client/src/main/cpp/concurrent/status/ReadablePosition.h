@@ -17,13 +17,15 @@
 #ifndef AERON_READONLY_POSITION_H
 #define AERON_READONLY_POSITION_H
 
+#include <cstdint>
+
 namespace aeron { namespace concurrent { namespace status {
 
 template <class X>
 class ReadablePosition
 {
 public:
-    explicit ReadablePosition(X& impl) : m_impl(impl)
+    explicit ReadablePosition(X &impl) : m_impl(impl)
     {
     }
 

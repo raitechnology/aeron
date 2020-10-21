@@ -19,7 +19,6 @@ import io.aeron.logbuffer.LogBufferDescriptor;
 import org.agrona.CloseHelper;
 import org.agrona.IoUtil;
 import org.agrona.LangUtil;
-import org.agrona.ManagedResource;
 import org.agrona.concurrent.UnsafeBuffer;
 
 import java.io.IOException;
@@ -41,12 +40,12 @@ import static java.nio.file.StandardOpenOption.*;
  *
  * @see io.aeron.logbuffer.LogBufferDescriptor
  */
-public class LogBuffers implements AutoCloseable, ManagedResource
+public class LogBuffers implements AutoCloseable
 {
     private static final EnumSet<StandardOpenOption> FILE_OPTIONS = EnumSet.of(READ, WRITE, SPARSE);
     private static final FileAttribute<?>[] NO_ATTRIBUTES = new FileAttribute[0];
 
-    private long timeOfLastStateChangeNs;
+    private long lingerDeadlineNs = Long.MAX_VALUE;
     private int refCount;
     private final int termLength;
     private final FileChannel fileChannel;
@@ -210,6 +209,9 @@ public class LogBuffers implements AutoCloseable, ManagedResource
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     public void close()
     {
         Throwable error = null;
@@ -245,28 +247,43 @@ public class LogBuffers implements AutoCloseable, ManagedResource
         return termLength;
     }
 
+    /**
+     * Increment reference count.
+     *
+     * @return current reference count after increment.
+     */
     public int incRef()
     {
         return ++refCount;
     }
 
+    /**
+     * Decrement reference count.
+     *
+     * @return current reference counter after decrement.
+     */
     public int decRef()
     {
         return --refCount;
     }
 
-    public void timeOfLastStateChange(final long timeNs)
+    /**
+     * Set the deadline for how long to linger around once unreferenced.
+     *
+     * @param timeNs the deadline for how long to linger around once unreferenced.
+     */
+    public void lingerDeadlineNs(final long timeNs)
     {
-        timeOfLastStateChangeNs = timeNs;
+        lingerDeadlineNs = timeNs;
     }
 
-    public long timeOfLastStateChange()
+    /**
+     * The deadline for how long to linger around once unreferenced.
+     *
+     * @return the deadline for how long to linger around once unreferenced.
+     */
+    public long lingerDeadlineNs()
     {
-        return timeOfLastStateChangeNs;
-    }
-
-    public void delete()
-    {
-        close();
+        return lingerDeadlineNs;
     }
 }

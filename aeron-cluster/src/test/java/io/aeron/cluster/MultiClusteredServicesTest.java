@@ -25,7 +25,7 @@ import io.aeron.logbuffer.Header;
 import io.aeron.test.Tests;
 import org.agrona.CloseHelper;
 import org.agrona.DirectBuffer;
-import org.agrona.ExpandableArrayBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -110,7 +110,7 @@ public class MultiClusteredServicesTest
 
         try
         {
-            final DirectBuffer buffer = new ExpandableArrayBuffer(100);
+            final DirectBuffer buffer = new UnsafeBuffer(new byte[100]);
 
             while (client.offer(buffer, 0, 100) < 0)
             {
@@ -123,8 +123,10 @@ public class MultiClusteredServicesTest
         finally
         {
             CloseHelper.closeAll(client, clientMediaDriver);
-            CloseHelper.closeAll(clusteredMediaDrivers);
+
+            clusteredMediaDrivers.forEach((clusteredMediaDriver) -> clusteredMediaDriver.consensusModule().close());
             CloseHelper.closeAll(clusteredServiceContainers);
+            CloseHelper.closeAll(clusteredMediaDrivers);
 
             clientMediaDriver.context().deleteDirectory();
             clusteredMediaDrivers.forEach((driver) -> driver.mediaDriver().context().deleteDirectory());

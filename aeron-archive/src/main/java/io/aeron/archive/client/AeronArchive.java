@@ -1751,8 +1751,8 @@ public class AeronArchive implements AutoCloseable
      * Migrate segments from a source recording and attach them to the beginning of a destination recording.
      * <p>
      * The source recording must match the destination recording for segment length, term length, mtu length,
-     * stream id, plus the stop position and term id of the source must join with the start position of the destination
-     * and be on a segment boundary.
+     * stream id, plus the stop position and term id of the source must join with the start position of the
+     * destination and be on a segment boundary.
      * <p>
      * The source recording will be effectively truncated back to its start position after the migration.
      *
@@ -1817,7 +1817,7 @@ public class AeronArchive implements AutoCloseable
 
             if (!poller.subscription().isConnected())
             {
-                throw new ArchiveException("subscription to archive is not connected");
+                throw new ArchiveException("response channel from archive is not connected");
             }
 
             checkDeadline(deadlineNs, "awaiting response", correlationId);
@@ -1955,7 +1955,7 @@ public class AeronArchive implements AutoCloseable
 
             if (!poller.subscription().isConnected())
             {
-                throw new ArchiveException("subscription to archive is not connected");
+                throw new ArchiveException("response channel from archive is not connected");
             }
 
             checkDeadline(deadlineNs, "awaiting recording descriptors", correlationId);
@@ -1997,7 +1997,7 @@ public class AeronArchive implements AutoCloseable
 
             if (!poller.subscription().isConnected())
             {
-                throw new ArchiveException("subscription to archive is not connected");
+                throw new ArchiveException("response channel from archive is not connected");
             }
 
             checkDeadline(deadlineNs, "awaiting subscription descriptors", correlationId);
@@ -2092,13 +2092,25 @@ public class AeronArchive implements AutoCloseable
 
         /**
          * Channel for receiving control response messages from an archive.
+         *
+         * <p>
+         * Channel's <em>endpoint</em> can be specified explicitly (i.e. by providing address and port pair) or
+         * by using zero as a port number. Here is an example of valid response channels:
+         * <ul>
+         *     <li>{@code aeron:udp?endpoint=localhost:8020} - listen on port {@code 8020} on localhost.</li>
+         *     <li>{@code aeron:udp?endpoint=192.168.10.10:8020} - listen on port {@code 8020} on
+         *     {@code 192.168.10.10}.</li>
+         *     <li>{@code aeron:udp?endpoint=localhost:0} - in this case the port is unspecified and the OS
+         *     will assign a free port from the
+         *     <a href="https://en.wikipedia.org/wiki/Ephemeral_port">ephemeral port range</a>.</li>
+         * </ul>
          */
         public static final String CONTROL_RESPONSE_CHANNEL_PROP_NAME = "aeron.archive.control.response.channel";
 
         /**
-         * Channel for receiving control response messages from an archive.
+         * Default channel for receiving control response messages from an archive.
          */
-        public static final String CONTROL_RESPONSE_CHANNEL_DEFAULT = "aeron:udp?endpoint=localhost:8020";
+        public static final String CONTROL_RESPONSE_CHANNEL_DEFAULT = "aeron:udp?endpoint=localhost:0";
 
         /**
          * Stream id within a channel for receiving control messages from an archive.
@@ -2929,8 +2941,13 @@ public class AeronArchive implements AutoCloseable
 
             if (2 == step)
             {
-                if (!archiveProxy.tryConnect(
-                    ctx.controlResponseChannel(), ctx.controlResponseStreamId(), correlationId))
+                final String responseChannel = controlResponsePoller.subscription().tryResolveChannelEndpointPort();
+                if (null == responseChannel)
+                {
+                    return null;
+                }
+
+                if (!archiveProxy.tryConnect(responseChannel, ctx.controlResponseStreamId(), correlationId))
                 {
                     return null;
                 }
@@ -3016,8 +3033,7 @@ public class AeronArchive implements AutoCloseable
 
             if (deadlineNs - nanoClock.nanoTime() < 0)
             {
-                throw new TimeoutException(
-                    "Archive connect timeout for correlation id: " + correlationId + " step " + step);
+                throw new TimeoutException("Archive connect timeout: correlationId=" + correlationId + " step=" + step);
             }
         }
     }

@@ -16,6 +16,7 @@
 package io.aeron.archive.status;
 
 import io.aeron.Aeron;
+import io.aeron.AeronCounters;
 import io.aeron.Counter;
 import io.aeron.Image;
 import org.agrona.BitUtil;
@@ -51,7 +52,7 @@ public class RecordingPos
     /**
      * Type id of a recording position counter.
      */
-    public static final int RECORDING_POSITION_TYPE_ID = 100;
+    public static final int RECORDING_POSITION_TYPE_ID = AeronCounters.ARCHIVE_RECORDING_POSITION_TYPE_ID;
 
     /**
      * Represents a null recording id when not found.
@@ -113,13 +114,18 @@ public class RecordingPos
 
         for (int i = 0, size = countersReader.maxCounterId(); i < size; i++)
         {
-            if (countersReader.getCounterState(i) == RECORD_ALLOCATED &&
+            final int counterState = countersReader.getCounterState(i);
+            if (counterState == RECORD_ALLOCATED &&
                 countersReader.getCounterTypeId(i) == RECORDING_POSITION_TYPE_ID)
             {
                 if (buffer.getLong(CountersReader.metaDataOffset(i) + KEY_OFFSET + RECORDING_ID_OFFSET) == recordingId)
                 {
                     return i;
                 }
+            }
+            else if (RECORD_UNUSED == counterState)
+            {
+                break;
             }
         }
 
@@ -139,13 +145,18 @@ public class RecordingPos
 
         for (int i = 0, size = countersReader.maxCounterId(); i < size; i++)
         {
-            if (countersReader.getCounterState(i) == RECORD_ALLOCATED &&
+            final int counterState = countersReader.getCounterState(i);
+            if (counterState == RECORD_ALLOCATED &&
                 countersReader.getCounterTypeId(i) == RECORDING_POSITION_TYPE_ID)
             {
                 if (buffer.getInt(CountersReader.metaDataOffset(i) + KEY_OFFSET + SESSION_ID_OFFSET) == sessionId)
                 {
                     return i;
                 }
+            }
+            else if (RECORD_UNUSED == counterState)
+            {
+                break;
             }
         }
 

@@ -16,8 +16,9 @@ case "`uname`" in
     ;;
 esac
 
-for option in "$@"
+while [[ $# -gt 0 ]]
 do
+  option="$1"
   case ${option} in
     --c-warnings-as-errors)
       EXTRA_CMAKE_ARGS="$EXTRA_CMAKE_ARGS -DC_WARNINGS_AS_ERRORS=ON"
@@ -30,7 +31,7 @@ do
       shift
       ;;
     -a|--build-archive-api)
-      EXTRA_CMAKE_ARGS="$EXTRA_CMAKE_ARGS -DBUILD_AERON_ARCHIVE_API=ON"
+      echo "Enabling building of Aeron Archive API is now the default"
       shift
       ;;
     --slow-system-tests)
@@ -44,7 +45,7 @@ do
       shift
       ;;
     -b|--build-aeron-driver)
-      echo "Enabling building of aeron driver is now the default"
+      echo "Enabling building of Aeron driver is now the default"
       shift
       ;;
     --no-parallel)
@@ -73,7 +74,7 @@ do
       shift
       ;;
     -h|--help)
-      echo "$0 [--c-warnings-as-errors] [--cxx-warnings-as-errors] [--debug-build] [--build-aeron-driver] [--sanitise-build] [--coverage-build] [--no-parallel]"
+      echo "$0 [--c-warnings-as-errors] [--cxx-warnings-as-errors] [--debug-build] [--build-aeron-driver] [--build-archive-api] [--sanitise-build] [--coverage-build] [--no-parallel] [--no-system-tests] [--slow-system-tests]"
       exit
       ;;
     *)

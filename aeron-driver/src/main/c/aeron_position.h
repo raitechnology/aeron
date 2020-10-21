@@ -17,6 +17,7 @@
 #define AERON_DRIVER_POSITION_H
 
 #include "concurrent/aeron_counters_manager.h"
+#include "aeron_counters.h"
 
 int32_t aeron_stream_counter_allocate(
     aeron_counters_manager_t *counters_manager,
@@ -33,6 +34,7 @@ int32_t aeron_channel_endpoint_status_allocate(
     aeron_counters_manager_t *counters_manager,
     const char *name,
     int32_t type_id,
+    int64_t registration_id,
     size_t channel_length,
     const char *channel);
 
@@ -102,17 +104,20 @@ int32_t aeron_counter_receiver_position_allocate(
 
 int32_t aeron_counter_send_channel_status_allocate(
     aeron_counters_manager_t *counters_manager,
+    int64_t registration_id,
     size_t channel_length,
     const char *channel);
 
 int32_t aeron_counter_receive_channel_status_allocate(
     aeron_counters_manager_t *counters_manager,
+    int64_t registration_id,
     size_t channel_length,
     const char *channel);
 
 int32_t aeron_counter_local_sockaddr_indicator_allocate(
     aeron_counters_manager_t *counters_manager,
     const char *name,
+    int64_t registration_id,
     int32_t channel_status_counter_id,
     const char *local_sockaddr);
 

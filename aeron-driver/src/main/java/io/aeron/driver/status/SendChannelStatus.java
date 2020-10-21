@@ -15,6 +15,7 @@
  */
 package io.aeron.driver.status;
 
+import io.aeron.AeronCounters;
 import io.aeron.status.ChannelEndpointStatus;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.status.AtomicCounter;
@@ -28,7 +29,7 @@ public class SendChannelStatus
     /**
      * Type id of a send channel status indicator.
      */
-    public static final int SEND_CHANNEL_STATUS_TYPE_ID = 6;
+    public static final int SEND_CHANNEL_STATUS_TYPE_ID = AeronCounters.DRIVER_SEND_CHANNEL_STATUS_TYPE_ID;
 
     /**
      * Human readable name for the counter.
@@ -36,9 +37,12 @@ public class SendChannelStatus
     public static final String NAME = "snd-channel";
 
     public static AtomicCounter allocate(
-        final MutableDirectBuffer tempBuffer, final CountersManager countersManager, final String channel)
+        final MutableDirectBuffer tempBuffer,
+        final CountersManager countersManager,
+        final long registrationId,
+        final String channel)
     {
         return ChannelEndpointStatus.allocate(
-            tempBuffer, NAME, SEND_CHANNEL_STATUS_TYPE_ID, countersManager, channel);
+            tempBuffer, NAME, SEND_CHANNEL_STATUS_TYPE_ID, countersManager, registrationId, channel);
     }
 }

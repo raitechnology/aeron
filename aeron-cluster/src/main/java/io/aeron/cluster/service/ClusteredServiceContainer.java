@@ -16,6 +16,7 @@
 package io.aeron.cluster.service;
 
 import io.aeron.Aeron;
+import io.aeron.AeronCounters;
 import io.aeron.CommonContext;
 import io.aeron.archive.client.AeronArchive;
 import io.aeron.cluster.client.ClusterException;
@@ -48,7 +49,6 @@ import static org.agrona.SystemUtil.loadPropertiesFiles;
  * loaded via {@link ClusteredServiceContainer.Configuration#SERVICE_CLASS_NAME_PROP_NAME} or
  * {@link ClusteredServiceContainer.Context#clusteredService(ClusteredService)}.
  */
-@SuppressWarnings("unused")
 public final class ClusteredServiceContainer implements AutoCloseable
 {
     /**
@@ -215,7 +215,7 @@ public final class ClusteredServiceContainer implements AutoCloseable
         /**
          * Default channel for communications between the local consensus module and services. This should be IPC.
          */
-        public static final String CONTROL_CHANNEL_DEFAULT = "aeron:ipc?term-length=64k|mtu=8k";
+        public static final String CONTROL_CHANNEL_DEFAULT = "aeron:ipc?term-length=128k";
 
         /**
          * Stream id within the control channel for communications from the consensus module to the services.
@@ -297,17 +297,18 @@ public final class ClusteredServiceContainer implements AutoCloseable
         /**
          * Counter type id for the cluster node role.
          */
-        public static final int CLUSTER_NODE_ROLE_TYPE_ID = 201;
+        public static final int CLUSTER_NODE_ROLE_TYPE_ID = AeronCounters.CLUSTER_NODE_ROLE_TYPE_ID;
 
         /**
          * Counter type id of the commit position.
          */
-        public static final int COMMIT_POSITION_TYPE_ID = 203;
+        public static final int COMMIT_POSITION_TYPE_ID = AeronCounters.CLUSTER_COMMIT_POSITION_TYPE_ID;
 
         /**
          * Counter type id for the clustered service error count.
          */
-        public static final int CLUSTERED_SERVICE_ERROR_COUNT_TYPE_ID = 215;
+        public static final int CLUSTERED_SERVICE_ERROR_COUNT_TYPE_ID =
+            AeronCounters.CLUSTER_CLUSTERED_SERVICE_ERROR_COUNT_TYPE_ID;
 
         /**
          * The value {@link #CLUSTER_ID_DEFAULT} or system property {@link #CLUSTER_ID_PROP_NAME} if set.
@@ -703,8 +704,8 @@ public final class ClusteredServiceContainer implements AutoCloseable
             archiveContext
                 .aeron(aeron)
                 .ownsAeronClient(false)
-                .errorHandler(countedErrorHandler)
-                .lock(NoOpLock.INSTANCE);
+                .lock(NoOpLock.INSTANCE)
+                .errorHandler(countedErrorHandler);
 
             if (null == shutdownSignalBarrier)
             {
@@ -713,7 +714,7 @@ public final class ClusteredServiceContainer implements AutoCloseable
 
             if (null == terminationHook)
             {
-                terminationHook = () -> shutdownSignalBarrier.signal();
+                terminationHook = () -> shutdownSignalBarrier.signalAll();
             }
 
             if (null == clusteredService)
@@ -1466,12 +1467,12 @@ public final class ClusteredServiceContainer implements AutoCloseable
         public void close()
         {
             final ErrorHandler errorHandler = countedErrorHandler();
-            CloseHelper.close(errorHandler, markFile);
-
             if (ownsAeronClient)
             {
-                CloseHelper.close(aeron);
+                CloseHelper.close(errorHandler, aeron);
             }
+
+            CloseHelper.close(errorHandler, markFile);
         }
 
         CountDownLatch abortLatch()

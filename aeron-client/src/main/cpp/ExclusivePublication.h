@@ -18,17 +18,11 @@
 #define AERON_EXCLUSIVE_PUBLICATION_H
 
 #include <array>
-#include <atomic>
 #include <memory>
 #include <string>
 
-#include <concurrent/AtomicBuffer.h>
-#include <concurrent/logbuffer/BufferClaim.h>
-#include <concurrent/logbuffer/ExclusiveTermAppender.h>
-#include <concurrent/status/UnsafeBufferPosition.h>
-#include "concurrent/status/StatusIndicatorReader.h"
 #include "Publication.h"
-#include "LogBuffers.h"
+#include "concurrent/logbuffer/ExclusiveTermAppender.h"
 
 namespace aeron
 {
@@ -221,6 +215,16 @@ public:
     inline bool isClosed() const
     {
         return std::atomic_load_explicit(&m_isClosed, std::memory_order_acquire);
+    }
+
+    /**
+     * Get the max possible position the stream can reach given term length.
+     *
+     * @return the max possible position the stream can reach given term length.
+     */
+    inline std::int64_t maxPossiblePosition() const
+    {
+        return m_maxPossiblePosition;
     }
 
     /**
@@ -434,7 +438,7 @@ public:
             {
                 throw aeron::util::IllegalStateException(
                     "length overflow: " + std::to_string(length) + " + " + std::to_string(it->capacity()) +
-                        " > " + std::to_string(length + it->capacity()),
+                    " > " + std::to_string(length + it->capacity()),
                     SOURCEINFO);
             }
 
@@ -497,7 +501,7 @@ public:
      */
     std::int64_t offer(
         const concurrent::AtomicBuffer buffers[],
-        size_t length,
+        std::size_t length,
         const on_reserved_value_supplier_t &reservedValueSupplier = DEFAULT_RESERVED_VALUE_SUPPLIER)
     {
         return offer(buffers, buffers + length, reservedValueSupplier);
@@ -511,7 +515,7 @@ public:
      * @return The new stream position, otherwise {@link #NOT_CONNECTED}, {@link #BACK_PRESSURED},
      * {@link #ADMIN_ACTION} or {@link #CLOSED}.
      */
-    template<size_t N>
+    template<std::size_t N>
     std::int64_t offer(
         const std::array<concurrent::AtomicBuffer, N> &buffers,
         const on_reserved_value_supplier_t &reservedValueSupplier = DEFAULT_RESERVED_VALUE_SUPPLIER)
@@ -532,7 +536,7 @@ public:
      *     {
      *         try
      *         {
-     *              AtomicBuffer& buffer = bufferClaim.buffer();
+     *              AtomicBuffer &buffer = bufferClaim.buffer();
      *              const index_t offset = bufferClaim.offset();
      *
      *              // Work with buffer directly or wrap with a flyweight

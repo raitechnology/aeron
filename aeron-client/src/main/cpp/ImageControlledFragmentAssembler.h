@@ -16,7 +16,6 @@
 #ifndef AERON_IMAGE_CONTROLLEDFRAGMENTASSEMBLER_H
 #define AERON_IMAGE_CONTROLLEDFRAGMENTASSEMBLER_H
 
-#include "Aeron.h"
 #include "BufferBuilder.h"
 
 namespace aeron
@@ -47,9 +46,9 @@ public:
      */
     explicit ImageControlledFragmentAssembler(
         const controlled_poll_fragment_handler_t &delegate,
-        size_t initialBufferLength = DEFAULT_IMAGE_CONTROLLED_FRAGMENT_ASSEMBLY_BUFFER_LENGTH) :
+        std::size_t initialBufferLength = DEFAULT_IMAGE_CONTROLLED_FRAGMENT_ASSEMBLY_BUFFER_LENGTH) :
         m_delegate(delegate),
-        m_builder(initialBufferLength)
+        m_builder(static_cast<std::uint32_t>(initialBufferLength))
     {
     }
 
@@ -73,7 +72,7 @@ private:
 
     ControlledPollAction onFragment(AtomicBuffer &buffer, util::index_t offset, util::index_t length, Header &header)
     {
-        const std::uint8_t flags = header.flags();
+        std::uint8_t flags = header.flags();
         ControlledPollAction action = ControlledPollAction::CONTINUE;
 
         if ((flags & FrameDescriptor::UNFRAGMENTED) == FrameDescriptor::UNFRAGMENTED)

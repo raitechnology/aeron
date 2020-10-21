@@ -20,10 +20,6 @@
 #include "aeronc.h"
 #include "aeron_common.h"
 #include "aeron_exclusive_publication.h"
-#include "aeron_alloc.h"
-#include "util/aeron_error.h"
-#include "util/aeron_fileutil.h"
-#include "concurrent/aeron_counters_manager.h"
 #include "concurrent/aeron_exclusive_term_appender.h"
 #include "aeron_log_buffer.h"
 
@@ -33,7 +29,9 @@ int aeron_exclusive_publication_create(
     const char *channel,
     int32_t stream_id,
     int32_t session_id,
+    int32_t position_limit_counter_id,
     int64_t *position_limit_addr,
+    int32_t channel_status_indicator_id,
     int64_t *channel_status_addr,
     aeron_log_buffer_t *log_buffer,
     int64_t original_registration_id,
@@ -55,7 +53,9 @@ int aeron_exclusive_publication_create(
     _publication->log_buffer = log_buffer;
     _publication->log_meta_data = (aeron_logbuffer_metadata_t *)log_buffer->mapped_raw_log.log_meta_data.addr;
 
+    _publication->position_limit_counter_id = position_limit_counter_id;
     _publication->position_limit = position_limit_addr;
+    _publication->channel_status_indicator_id = channel_status_indicator_id;
     _publication->channel_status_indicator = channel_status_addr;
 
     size_t term_length = (size_t)_publication->log_meta_data->term_length;
@@ -79,9 +79,9 @@ int aeron_exclusive_publication_create(
     _publication->session_id = session_id;
     _publication->is_closed = false;
 
-    _publication->max_possible_position = ((int64_t)term_length << 31L);
+    _publication->max_possible_position = ((int64_t)term_length << 31);
     _publication->max_payload_length = (size_t)(_publication->log_meta_data->mtu_length - AERON_DATA_HEADER_LENGTH);
-    _publication->max_message_length = aeron_frame_compute_max_message_length(term_length);
+    _publication->max_message_length = aeron_compute_max_message_length(term_length);
     _publication->term_buffer_length = (int32_t)term_length;
 
     *publication = _publication;
@@ -101,7 +101,10 @@ void aeron_exclusive_publication_force_close(aeron_exclusive_publication_t *publ
     AERON_PUT_ORDERED(publication->is_closed, true);
 }
 
-int aeron_exclusive_publication_close(aeron_exclusive_publication_t *publication)
+int aeron_exclusive_publication_close(
+    aeron_exclusive_publication_t *publication,
+    aeron_notification_t on_close_complete,
+    void *on_close_complete_clientd)
 {
     if (NULL != publication)
     {
@@ -111,7 +114,8 @@ int aeron_exclusive_publication_close(aeron_exclusive_publication_t *publication
         if (!is_closed)
         {
             AERON_PUT_ORDERED(publication->is_closed, true);
-            if (aeron_client_conductor_async_close_exclusive_publication(publication->conductor, publication) < 0)
+            if (aeron_client_conductor_async_close_exclusive_publication(
+                publication->conductor, publication, on_close_complete, on_close_complete_clientd) < 0)
             {
                 return -1;
             }
@@ -288,9 +292,7 @@ int64_t aeron_exclusive_publication_offerv(
 }
 
 int64_t aeron_exclusive_publication_try_claim(
-    aeron_exclusive_publication_t *publication,
-    size_t length,
-    aeron_buffer_claim_t *buffer_claim)
+    aeron_exclusive_publication_t *publication, size_t length, aeron_buffer_claim_t *buffer_claim)
 {
     int64_t new_position = AERON_PUBLICATION_CLOSED;
     bool is_closed;
@@ -340,9 +342,7 @@ int64_t aeron_exclusive_publication_try_claim(
     return new_position;
 }
 
-int64_t aeron_exclusive_publication_append_padding(
-    aeron_exclusive_publication_t *publication,
-    size_t length)
+int64_t aeron_exclusive_publication_append_padding(aeron_exclusive_publication_t *publication, size_t length)
 {
     int64_t new_position = AERON_PUBLICATION_CLOSED;
     bool is_closed;
@@ -395,9 +395,7 @@ int64_t aeron_exclusive_publication_append_padding(
 }
 
 int64_t aeron_exclusive_publication_offer_block(
-    aeron_exclusive_publication_t *publication,
-    const uint8_t *buffer,
-    size_t length)
+    aeron_exclusive_publication_t *publication, const uint8_t *buffer, size_t length)
 {
     bool is_closed;
 
@@ -490,6 +488,19 @@ bool aeron_exclusive_publication_is_closed(aeron_exclusive_publication_t *public
     return is_closed;
 }
 
+bool aeron_exclusive_publication_is_connected(aeron_exclusive_publication_t *publication)
+{
+    if (NULL != publication && !aeron_exclusive_publication_is_closed(publication))
+    {
+        int32_t is_connected;
+
+        AERON_GET_VOLATILE(is_connected, publication->log_meta_data->is_connected);
+        return 1 == is_connected;
+    }
+
+    return false;
+}
+
 int aeron_exclusive_publication_constants(
     aeron_exclusive_publication_t *publication, aeron_publication_constants_t *constants)
 {
@@ -511,6 +522,8 @@ int aeron_exclusive_publication_constants(
     constants->stream_id = publication->stream_id;
     constants->session_id = publication->session_id;
     constants->initial_term_id = publication->initial_term_id;
+    constants->publication_limit_counter_id = publication->position_limit_counter_id;
+    constants->channel_status_indicator_id = publication->channel_status_indicator_id;
     return 0;
 }
 
@@ -567,37 +580,10 @@ int64_t aeron_exclusive_publication_position_limit(aeron_exclusive_publication_t
     return aeron_counter_get_volatile(publication->position_limit);
 }
 
-int aeron_exclusive_publication_add_destination(aeron_exclusive_publication_t *publication, const char *uri)
-{
-    if (NULL == publication || uri == NULL)
-    {
-        errno = EINVAL;
-        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
-        return -1;
-    }
-
-    return aeron_client_conductor_offer_destination_command(
-        publication->conductor, publication->registration_id, AERON_COMMAND_ADD_DESTINATION, uri);
-}
-
-int aeron_exclusive_publication_remove_destination(aeron_exclusive_publication_t *publication, const char *uri)
-{
-    if (NULL == publication || uri == NULL)
-    {
-        errno = EINVAL;
-        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
-        return -1;
-    }
-
-    return aeron_client_conductor_offer_destination_command(
-        publication->conductor, publication->registration_id, AERON_COMMAND_REMOVE_DESTINATION, uri);
-}
-
 extern void aeron_exclusive_publication_rotate_term(aeron_exclusive_publication_t *publication);
 
 extern int64_t aeron_exclusive_publication_new_position(
-    aeron_exclusive_publication_t *publication,
-    int32_t resulting_offset);
+    aeron_exclusive_publication_t *publication, int32_t resulting_offset);
 
 extern int64_t aeron_exclusive_publication_back_pressure_status(
     aeron_exclusive_publication_t *publication, int64_t current_position, int32_t message_length);

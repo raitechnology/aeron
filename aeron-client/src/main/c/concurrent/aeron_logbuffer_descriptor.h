@@ -59,14 +59,13 @@ aeron_logbuffer_metadata_t;
 
 #define AERON_LOGBUFFER_FRAME_ALIGNMENT (32)
 
-#define AERON_LOGBUFFER_RAWTAIL_VOLATILE(d,m) \
+#define AERON_LOGBUFFER_RAWTAIL_VOLATILE(d, m) \
 do \
 { \
     int32_t active_term_count; \
-    size_t partition; \
-    AERON_GET_VOLATILE(active_term_count,(m->active_term_count)); \
-    partition = (size_t)(active_term_count % AERON_LOGBUFFER_PARTITION_COUNT); \
-    AERON_GET_VOLATILE(d, m->term_tail_counters[partition]); \
+    AERON_GET_VOLATILE(active_term_count, ((m)->active_term_count)); \
+    size_t partition = (size_t)(active_term_count % AERON_LOGBUFFER_PARTITION_COUNT); \
+    AERON_GET_VOLATILE(d, (m)->term_tail_counters[partition]); \
 } \
 while(false)
 
@@ -129,7 +128,7 @@ inline int32_t aeron_logbuffer_compute_term_id_from_position(
 
 inline int32_t aeron_logbuffer_compute_term_offset_from_position(int64_t position, size_t position_bits_to_shift)
 {
-    int64_t mask = (1u << position_bits_to_shift) - 1l;
+    int64_t mask = (1u << position_bits_to_shift) - 1;
 
     return (int32_t)(position & mask);
 }
@@ -140,13 +139,12 @@ inline bool aeron_logbuffer_cas_raw_tail(
     int64_t expected_raw_tail,
     int64_t update_raw_tail)
 {
-    return aeron_cmpxchg64(&log_meta_data->term_tail_counters[partition_index], expected_raw_tail, update_raw_tail);
+    return aeron_cas_int64(&log_meta_data->term_tail_counters[partition_index], expected_raw_tail, update_raw_tail);
 }
 
 inline int32_t aeron_logbuffer_active_term_count(aeron_logbuffer_metadata_t *log_meta_data)
 {
     int32_t active_term_count;
-
     AERON_GET_VOLATILE(active_term_count, log_meta_data->active_term_count);
     return active_term_count;
 }
@@ -156,7 +154,7 @@ inline bool aeron_logbuffer_cas_active_term_count(
     int32_t expected_term_count,
     int32_t update_term_count)
 {
-    return aeron_cmpxchg32(&log_meta_data->active_term_count, expected_term_count, update_term_count);
+    return aeron_cas_int32(&log_meta_data->active_term_count, expected_term_count, update_term_count);
 }
 
 inline bool aeron_logbuffer_rotate_log(

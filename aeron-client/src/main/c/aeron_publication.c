@@ -20,10 +20,6 @@
 #include "aeronc.h"
 #include "aeron_common.h"
 #include "aeron_publication.h"
-#include "aeron_alloc.h"
-#include "util/aeron_error.h"
-#include "util/aeron_fileutil.h"
-#include "concurrent/aeron_counters_manager.h"
 #include "concurrent/aeron_term_appender.h"
 #include "aeron_log_buffer.h"
 
@@ -33,7 +29,9 @@ int aeron_publication_create(
     const char *channel,
     int32_t stream_id,
     int32_t session_id,
+    int32_t position_limit_counter_id,
     int64_t *position_limit_addr,
+    int32_t channel_status_indicator_id,
     int64_t *channel_status_addr,
     aeron_log_buffer_t *log_buffer,
     int64_t original_registration_id,
@@ -55,7 +53,9 @@ int aeron_publication_create(
     _publication->log_buffer = log_buffer;
     _publication->log_meta_data = (aeron_logbuffer_metadata_t *)log_buffer->mapped_raw_log.log_meta_data.addr;
 
+    _publication->position_limit_counter_id = position_limit_counter_id;
     _publication->position_limit = position_limit_addr;
+    _publication->channel_status_indicator_id = channel_status_indicator_id;
     _publication->channel_status_indicator = channel_status_addr;
 
     _publication->conductor = conductor;
@@ -68,9 +68,9 @@ int aeron_publication_create(
 
     size_t term_length = (size_t)_publication->log_meta_data->term_length;
 
-    _publication->max_possible_position = ((int64_t)term_length << 31L);
+    _publication->max_possible_position = ((int64_t)term_length << 31);
     _publication->max_payload_length = (size_t)(_publication->log_meta_data->mtu_length - AERON_DATA_HEADER_LENGTH);
-    _publication->max_message_length = aeron_frame_compute_max_message_length(term_length);
+    _publication->max_message_length = aeron_compute_max_message_length(term_length);
     _publication->position_bits_to_shift = (size_t)aeron_number_of_trailing_zeroes((int32_t)term_length);
     _publication->initial_term_id = _publication->log_meta_data->initial_term_id;
 
@@ -91,7 +91,8 @@ void aeron_publication_force_close(aeron_publication_t *publication)
     AERON_PUT_ORDERED(publication->is_closed, true);
 }
 
-int aeron_publication_close(aeron_publication_t *publication)
+int aeron_publication_close(
+    aeron_publication_t *publication, aeron_notification_t on_close_complete, void *on_close_complete_clientd)
 {
     if (NULL != publication)
     {
@@ -102,7 +103,8 @@ int aeron_publication_close(aeron_publication_t *publication)
         {
             AERON_PUT_ORDERED(publication->is_closed, true);
 
-            if (aeron_client_conductor_async_close_publication(publication->conductor, publication) < 0)
+            if (aeron_client_conductor_async_close_publication(
+                publication->conductor, publication, on_close_complete, on_close_complete_clientd) < 0)
             {
                 return -1;
             }
@@ -292,10 +294,7 @@ int64_t aeron_publication_offerv(
     return new_position;
 }
 
-int64_t aeron_publication_try_claim(
-    aeron_publication_t *publication,
-    size_t length,
-    aeron_buffer_claim_t *buffer_claim)
+int64_t aeron_publication_try_claim(aeron_publication_t *publication, size_t length, aeron_buffer_claim_t *buffer_claim)
 {
     int64_t new_position = AERON_PUBLICATION_CLOSED;
     bool is_closed;
@@ -335,13 +334,13 @@ int64_t aeron_publication_try_claim(
         if (position < limit)
         {
             int32_t resulting_offset = aeron_term_appender_claim(
-                    &publication->log_buffer->mapped_raw_log.term_buffers[index],
-                    &publication->log_meta_data->term_tail_counters[index],
-                    length,
-                    buffer_claim,
-                    term_id,
-                    publication->session_id,
-                    publication->stream_id);
+                &publication->log_buffer->mapped_raw_log.term_buffers[index],
+                &publication->log_meta_data->term_tail_counters[index],
+                length,
+                buffer_claim,
+                term_id,
+                publication->session_id,
+                publication->stream_id);
 
             new_position = aeron_publication_new_position(
                 publication, term_count, (int32_t)term_offset, term_id, position, resulting_offset);
@@ -400,6 +399,8 @@ int aeron_publication_constants(aeron_publication_t *publication, aeron_publicat
     constants->stream_id = publication->stream_id;
     constants->session_id = publication->session_id;
     constants->initial_term_id = publication->initial_term_id;
+    constants->publication_limit_counter_id = publication->position_limit_counter_id;
+    constants->channel_status_indicator_id = publication->channel_status_indicator_id;
     return 0;
 }
 
@@ -466,32 +467,6 @@ int64_t aeron_publication_position_limit(aeron_publication_t *publication)
     return aeron_counter_get_volatile(publication->position_limit);
 }
 
-int aeron_publication_add_destination(aeron_publication_t *publication, const char *uri)
-{
-    if (NULL == publication || uri == NULL)
-    {
-        errno = EINVAL;
-        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
-        return -1;
-    }
-
-    return aeron_client_conductor_offer_destination_command(
-        publication->conductor, publication->registration_id, AERON_COMMAND_ADD_DESTINATION, uri);
-}
-
-int aeron_publication_remove_destination(aeron_publication_t *publication, const char *uri)
-{
-    if (NULL == publication || uri == NULL)
-    {
-        errno = EINVAL;
-        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
-        return -1;
-    }
-
-    return aeron_client_conductor_offer_destination_command(
-        publication->conductor, publication->registration_id, AERON_COMMAND_REMOVE_DESTINATION, uri);
-}
-
 extern int64_t aeron_publication_new_position(
     aeron_publication_t *publication,
     int32_t term_count,
@@ -502,3 +477,18 @@ extern int64_t aeron_publication_new_position(
 
 extern int64_t aeron_publication_back_pressure_status(
     aeron_publication_t *publication, int64_t current_position, int32_t message_length);
+
+const char *aeron_publication_channel(aeron_publication_t *publication)
+{
+    return publication->channel;
+}
+
+int32_t aeron_publication_stream_id(aeron_publication_t *publication)
+{
+    return publication->stream_id;
+}
+
+int32_t aeron_publication_session_id(aeron_publication_t *publication)
+{
+    return publication->session_id;
+}

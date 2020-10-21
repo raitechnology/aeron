@@ -15,10 +15,7 @@
  */
 package io.aeron.archive;
 
-import io.aeron.Aeron;
-import io.aeron.CommonContext;
-import io.aeron.Counter;
-import io.aeron.Image;
+import io.aeron.*;
 import io.aeron.archive.checksum.Checksum;
 import io.aeron.archive.checksum.Checksums;
 import io.aeron.archive.client.AeronArchive;
@@ -58,7 +55,7 @@ import static org.agrona.SystemUtil.*;
 /**
  * The Aeron Archive which allows for the recording and replay of local and remote {@link io.aeron.Publication}s .
  */
-public class Archive implements AutoCloseable
+public final class Archive implements AutoCloseable
 {
     private final Context ctx;
     private final AgentRunner conductorRunner;
@@ -373,7 +370,7 @@ public class Archive implements AutoCloseable
          *
          * @see #REPLICATION_CHANNEL_PROP_NAME
          */
-        public static final String REPLICATION_CHANNEL_DEFAULT = "aeron:udp?endpoint=localhost:8040";
+        public static final String REPLICATION_CHANNEL_DEFAULT = "aeron:udp?endpoint=localhost:0";
 
         /**
          * Name of class to use as a supplier of {@link Authenticator} for the archive.
@@ -389,12 +386,12 @@ public class Archive implements AutoCloseable
         /**
          * The type id of the {@link Counter} used for keeping track of the number of errors that have occurred.
          */
-        public static final int ARCHIVE_ERROR_COUNT_TYPE_ID = 101;
+        public static final int ARCHIVE_ERROR_COUNT_TYPE_ID = AeronCounters.ARCHIVE_ERROR_COUNT_TYPE_ID;
 
         /**
          * The type id of the {@link Counter} used for keeping track of the count of concurrent control sessions.
          */
-        public static final int ARCHIVE_CONTROL_SESSIONS_TYPE_ID = 102;
+        public static final int ARCHIVE_CONTROL_SESSIONS_TYPE_ID = AeronCounters.ARCHIVE_CONTROL_SESSIONS_TYPE_ID;
 
         /**
          * Size in bytes of the error buffer for the archive when not externally provided.

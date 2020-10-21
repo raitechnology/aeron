@@ -18,9 +18,9 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <util/BitUtil.h>
-#include <util/Exceptions.h>
-#include <util/StringUtil.h>
+#include "util/BitUtil.h"
+#include "util/Exceptions.h"
+#include "util/StringUtil.h"
 #include "Flyweight.h"
 
 namespace aeron { namespace command
@@ -159,7 +159,7 @@ public:
         return *this;
     }
 
-    inline std::int32_t length()
+    inline util::index_t length() const
     {
         const util::index_t startOfSourceIdentity = sourceIdentityOffset();
 

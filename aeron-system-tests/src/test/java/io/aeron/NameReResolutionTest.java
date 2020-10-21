@@ -64,15 +64,10 @@ public class NameReResolutionTest
         "aeron:udp?control=" + CONTROL_NAME + "|control-mode=dynamic";
     private static final String SUBSCRIPTION_MDS_URI = "aeron:udp?control-mode=manual";
 
-    private static final String STUB_LOOKUP_CONFIGURATION;
-
-    static
-    {
-        STUB_LOOKUP_CONFIGURATION =
-            ENDPOINT_NAME + "," + ENDPOINT_PARAM_NAME + "," + "localhost:24326,localhost:24325|" +
-            CONTROL_NAME + "," + MDC_CONTROL_PARAM_NAME + "," + "localhost:24328,localhost:24327|" +
-            ENDPOINT_WITH_ERROR_NAME + "," + ENDPOINT_PARAM_NAME + "," + BAD_ADDRESS + ",localhost:24325|";
-    }
+    private static final String STUB_LOOKUP_CONFIGURATION =
+        ENDPOINT_NAME + "," + ENDPOINT_PARAM_NAME + "," + "localhost:24326,localhost:24325|" +
+        CONTROL_NAME + "," + MDC_CONTROL_PARAM_NAME + "," + "localhost:24328,localhost:24327|" +
+        ENDPOINT_WITH_ERROR_NAME + "," + ENDPOINT_PARAM_NAME + "," + BAD_ADDRESS + ",localhost:24325|";
 
     private static final int STREAM_ID = 1001;
 
@@ -398,7 +393,8 @@ public class NameReResolutionTest
             client.countersReader(), SystemCounterDescriptor.ERRORS.id(), initialErrorCount, 1);
 
         final Matcher<String> exceptionMessageMatcher = allOf(
-            containsString("endpoint=" + ENDPOINT_WITH_ERROR_NAME), containsString("name-and-port=" + BAD_ADDRESS));
+            containsString("endpoint=" + ENDPOINT_WITH_ERROR_NAME),
+            containsString("name-and-port=" + BAD_ADDRESS));
 
         ErrorReportTestUtil.waitForErrorToOccur(
             client.context().aeronDirectoryName(),

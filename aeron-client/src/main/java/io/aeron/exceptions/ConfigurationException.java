@@ -15,8 +15,16 @@
  */
 package io.aeron.exceptions;
 
+/**
+ * Indicates an invalid configuration option has been provided.
+ */
 public class ConfigurationException extends AeronException
 {
+    /**
+     * Construct an exception with detail for the configuration error.
+     *
+     * @param message detail for the configuration error.
+     */
     public ConfigurationException(final String message)
     {
         super(message);

@@ -19,10 +19,13 @@ import io.aeron.CommonContext;
 import io.aeron.driver.media.UdpChannel;
 import io.aeron.protocol.StatusMessageFlyweight;
 
+import java.util.Arrays;
+
 import static io.aeron.logbuffer.LogBufferDescriptor.computePosition;
 import static org.agrona.AsciiEncoding.parseIntAscii;
 import static org.agrona.AsciiEncoding.parseLongAscii;
 import static org.agrona.SystemUtil.parseDuration;
+import static org.agrona.collections.ArrayUtil.add;
 
 /**
  * Abstract minimum multicast sender flow control strategy. It supports the concept of only tracking the minimum of a
@@ -41,7 +44,12 @@ public abstract class AbstractMinMulticastFlowControl implements FlowControl
     private final boolean isGroupTagAware;
     private volatile Receiver[] receivers = EMPTY_RECEIVERS;
 
-    public AbstractMinMulticastFlowControl(final boolean isGroupTagAware)
+    /**
+     * Base constructor for use by specialised implementations.
+     *
+     * @param isGroupTagAware true if the group tag is used.
+     */
+    protected AbstractMinMulticastFlowControl(final boolean isGroupTagAware)
     {
         this.isGroupTagAware = isGroupTagAware;
     }
@@ -97,6 +105,27 @@ public abstract class AbstractMinMulticastFlowControl implements FlowControl
         return receivers.length < groupMinSize || receivers.length == 0 ? senderLimit : minLimitPosition;
     }
 
+    /**
+     * Has the observed receiver count reached the {@link #groupMinSize()} threshold?
+     *
+     * @return true if the observed receiver count reached the {@link #groupMinSize()} threshold?
+     */
+    public boolean hasRequiredReceivers()
+    {
+        return receivers.length >= groupMinSize;
+    }
+
+    /**
+     * Process a received status message.
+     *
+     * @param flyweight           mapped over the status message.
+     * @param senderLimit         the sender is currently limited to for sending.
+     * @param initialTermId       for the publication.
+     * @param positionBitsToShift when calculating term length with requiring a divide.
+     * @param timeNs              current time.
+     * @param matchesTag          if the status messages comes from a receiver with a tag matching the group.
+     * @return the new position limit to be employed by the sender.
+     */
     protected final long processStatusMessage(
         final StatusMessageFlyweight flyweight,
         final long senderLimit,
@@ -154,39 +183,44 @@ public abstract class AbstractMinMulticastFlowControl implements FlowControl
         }
     }
 
-    public boolean hasRequiredReceivers()
-    {
-        return receivers.length >= groupMinSize;
-    }
-
+    /**
+     * Timeout after which an inactive receiver will be dropped.
+     *
+     * @return timeout after which an inactive receiver will be dropped.
+     */
     protected final long receiverTimeoutNs()
     {
         return receiverTimeoutNs;
     }
 
+    /**
+     * Indicates if the flow control strategy has a group tag it is aware of for tracking membership.
+     *
+     * @return true if the flow control strategy has a group tag it is aware of for tracking membership.
+     */
     protected final boolean hasGroupTag()
     {
         return isGroupTagAware;
     }
 
+    /**
+     * The tag used to identify members of the group.
+     *
+     * @return tag used to identify members of the group.
+     */
     protected final long groupTag()
     {
         return groupTag;
     }
 
+    /**
+     * The minimum group size required for progress.
+     *
+     * @return minimum group size required for progress.
+     */
     protected final int groupMinSize()
     {
         return groupMinSize;
-    }
-
-    static Receiver[] add(final Receiver[] receivers, final Receiver receiver)
-    {
-        final int length = receivers.length;
-        final Receiver[] newElements = new Receiver[length + 1];
-
-        System.arraycopy(receivers, 0, newElements, 0, length);
-        newElements[length] = receiver;
-        return newElements;
     }
 
     static Receiver[] truncateReceivers(final Receiver[] receivers, final int removed)
@@ -200,9 +234,7 @@ public abstract class AbstractMinMulticastFlowControl implements FlowControl
         }
         else
         {
-            final Receiver[] newElements = new Receiver[newLength];
-            System.arraycopy(receivers, 0, newElements, 0, newLength);
-            return newElements;
+            return Arrays.copyOf(receivers, newLength);
         }
     }
 

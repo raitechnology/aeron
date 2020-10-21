@@ -14,17 +14,13 @@
  * limitations under the License.
  */
 
-#include <stdlib.h>
 #include <inttypes.h>
-#include <string.h>
 #include "uri/aeron_uri.h"
 #include "util/aeron_arrayutil.h"
 #include "util/aeron_math.h"
 #include "util/aeron_parse_util.h"
 #include "aeron_driver_context.h"
 #include "aeron_driver_conductor.h"
-#include "aeron_uri.h"
-#include "aeron_alloc.h"
 
 typedef enum aeron_uri_parser_state_enum
 {
@@ -346,7 +342,7 @@ int aeron_uri_get_term_length_param(aeron_uri_params_t *uri_params, aeron_uri_pu
 
         if (-1 == aeron_parse_size64(value_str, &value))
         {
-            aeron_set_err(EINVAL, "could not parse %s in URI", AERON_URI_TERM_LENGTH_KEY);
+            aeron_set_err(EINVAL, "could not parse %s=%s in URI", AERON_URI_TERM_LENGTH_KEY, value_str);
             return -1;
         }
 
@@ -371,7 +367,7 @@ int aeron_uri_get_mtu_length_param(aeron_uri_params_t *uri_params, aeron_uri_pub
 
         if (-1 == aeron_parse_size64(value_str, &value))
         {
-            aeron_set_err(EINVAL, "could not parse %s in URI", AERON_URI_MTU_LENGTH_KEY);
+            aeron_set_err(EINVAL, "could not parse %s=%s in URI", AERON_URI_MTU_LENGTH_KEY, value_str);
             return -1;
         }
 
@@ -396,7 +392,7 @@ int aeron_uri_linger_timeout_param(aeron_uri_params_t *uri_params, aeron_uri_pub
 
         if (-1 == aeron_parse_duration_ns(value_str, &value))
         {
-            aeron_set_err(EINVAL, "could not parse %s in URI", AERON_URI_LINGER_TIMEOUT_KEY);
+            aeron_set_err(EINVAL, "could not parse %s=%s in URI", AERON_URI_LINGER_TIMEOUT_KEY, value_str);
             return -1;
         }
 
@@ -421,15 +417,14 @@ int aeron_uri_get_int32(aeron_uri_params_t *uri_params, const char *key, int32_t
 
     if (0 != errno || '\0' != *end_ptr)
     {
-        aeron_set_err(EINVAL, "could not parse %s as int32_t, for key %s in URI: %s", value_str, key, strerror(errno));
+        aeron_set_err(EINVAL, "could not parse %s=%s as int32_t in URI: %s", key, value_str, strerror(errno));
         return -1;
     }
     else if (value < INT32_MIN || INT32_MAX < value)
     {
         aeron_set_err(
             EINVAL,
-            "could not parse %s as int32_t, for key %s in URI: Numerical result out of range",
-            value_str, key);
+            "could not parse %s=%s as int32_t in URI: Numerical result out of range", key, value_str);
         return -1;
     }
 
@@ -454,7 +449,7 @@ int aeron_uri_get_int64(aeron_uri_params_t *uri_params, const char *key, int64_t
     value = strtoll(value_str, &end_ptr, 0);
     if (0 != errno || '\0' != *end_ptr)
     {
-        aeron_set_err(EINVAL, "could not parse %s as int64_t, for key %s in URI: ", value_str, key, strerror(errno));
+        aeron_set_err(EINVAL, "could not parse %s=%s as int64_t in URI: ", key, value_str, strerror(errno));
         return -1;
     }
 
@@ -463,15 +458,60 @@ int aeron_uri_get_int64(aeron_uri_params_t *uri_params, const char *key, int64_t
     return 1;
 }
 
+int aeron_uri_get_bool(aeron_uri_params_t *uri_params, const char *key, bool *retval)
+{
+    const char *value_str = aeron_uri_find_param_value(uri_params, key);
+    if (value_str != NULL)
+    {
+        if (strncmp("true", value_str, strlen("true")) == 0)
+        {
+            *retval = true;
+        }
+        else if (strncmp("false", value_str, strlen("false")) == 0)
+        {
+            *retval = false;
+        }
+        else
+        {
+            aeron_set_err(EINVAL, "could not parse %s=%s as bool from URI", key, value_str);
+            return -1;
+        }
+    }
+
+    return 1;
+}
+
+int aeron_uri_get_ats(aeron_uri_params_t *uri_params, aeron_uri_ats_status_t *uri_ats_status)
+{
+    const char *value_str = aeron_uri_find_param_value(uri_params, AERON_URI_ATS_KEY);
+    *uri_ats_status = AERON_URI_ATS_STATUS_DEFAULT;
+    if (value_str != NULL)
+    {
+        if (strncmp("true", value_str, strlen("true")) == 0)
+        {
+            *uri_ats_status = AERON_URI_ATS_STATUS_ENABLED;
+        }
+        else if (strncmp("false", value_str, strlen("false")) == 0)
+        {
+            *uri_ats_status = AERON_URI_ATS_STATUS_DISABLED;
+        }
+        else
+        {
+            aeron_set_err(EINVAL, "could not parse %s=%s as bool from URI", AERON_URI_ATS_KEY, value_str);
+            return -1;
+        }
+    }
+
+    return 1;
+}
+
 int aeron_uri_publication_session_id_param(
-    aeron_uri_params_t *uri_params,
-    aeron_driver_conductor_t *conductor,
-    aeron_uri_publication_params_t *params)
+    aeron_uri_params_t *uri_params, aeron_driver_conductor_t *conductor, aeron_uri_publication_params_t *params)
 {
     const char *session_id_str = aeron_uri_find_param_value(uri_params, AERON_URI_SESSION_ID_KEY);
     if (NULL != session_id_str)
     {
-        if (0 == strncmp("tag:", session_id_str, 4))
+        if (0 == strncmp("tag:", session_id_str, strlen("tag:")))
         {
             char *end_ptr;
             errno = 0;
@@ -481,8 +521,8 @@ int aeron_uri_publication_session_id_param(
             {
                 aeron_set_err(
                     EINVAL,
-                    "could not parse %s as int64_t, for key %s in URI: ",
-                    session_id_str, "session-id", strerror(errno));
+                    "could not parse %s=%s as int64_t in URI: ",
+                    AERON_URI_SESSION_ID_KEY, session_id_str, strerror(errno));
                 return -1;
             }
 
@@ -491,7 +531,8 @@ int aeron_uri_publication_session_id_param(
 
             if (NULL == publication)
             {
-                aeron_set_err(EINVAL, "%s=%s must reference a network publication", "session-id", session_id_str);
+                aeron_set_err(
+                    EINVAL, "%s=%s must reference a network publication", AERON_URI_SESSION_ID_KEY, session_id_str);
                 return -1;
             }
 
@@ -537,6 +578,7 @@ int aeron_uri_publication_params(
     params->has_position = false;
     params->is_sparse = context->term_buffer_sparse_file;
     params->signal_eos = true;
+    params->spies_simulate_connection = context->spies_simulate_connection;
     params->has_session_id = false;
     params->session_id = 0;
     params->entity_tag = AERON_URI_INVALID_TAG;
@@ -616,8 +658,8 @@ int aeron_uri_publication_params(
         if (count < 3)
         {
             aeron_set_err(
-                EINVAL, "params must be used as a complete set: %s %s %s", AERON_URI_INITIAL_TERM_ID_KEY,
-                AERON_URI_TERM_ID_KEY, AERON_URI_TERM_OFFSET_KEY);
+                EINVAL, "params must be used as a complete set: %s %s %s",
+                AERON_URI_INITIAL_TERM_ID_KEY, AERON_URI_TERM_ID_KEY, AERON_URI_TERM_OFFSET_KEY);
             return -1;
         }
 
@@ -626,7 +668,9 @@ int aeron_uri_publication_params(
         uint64_t term_offset = strtoull(term_offset_str, &end_ptr, 0);
         if ((term_offset == 0 && 0 != errno) || end_ptr == term_offset_str)
         {
-            aeron_set_err(EINVAL, "could not parse %s in URI", AERON_URI_TERM_OFFSET_KEY);
+            aeron_set_err(
+                EINVAL,
+                "could not parse %s=%s in URI: %s", AERON_URI_TERM_OFFSET_KEY, term_offset_str, strerror(errno));
             return -1;
         }
 
@@ -670,18 +714,19 @@ int aeron_uri_publication_params(
         params->has_position = true;
     }
 
-    const char *value_str;
-
-    if ((value_str = aeron_uri_find_param_value(uri_params, AERON_URI_SPARSE_TERM_KEY)) != NULL &&
-        strncmp("true", value_str, strlen("true")) == 0)
+    if (aeron_uri_get_bool(uri_params, AERON_URI_SPARSE_TERM_KEY, &params->is_sparse) < 0)
     {
-        params->is_sparse = true;
+        return -1;
     }
 
-    if ((value_str = aeron_uri_find_param_value(uri_params, AERON_URI_EOS_KEY)) != NULL &&
-        strncmp("false", value_str, strlen("false")) == 0)
+    if (aeron_uri_get_bool(uri_params, AERON_URI_EOS_KEY, &params->signal_eos) < 0)
     {
-        params->signal_eos = false;
+        return -1;
+    }
+
+    if (aeron_uri_get_bool(uri_params, AERON_URI_SPIES_SIMULATE_CONNECTION_KEY, &params->spies_simulate_connection) < 0)
+    {
+        return -1;
     }
 
     return 0;
@@ -697,36 +742,31 @@ int aeron_uri_subscription_params(
     params->is_tether = context->tether_subscriptions;
     params->is_rejoin = context->rejoin_stream;
 
-    const char *value_str;
     aeron_uri_params_t *uri_params = AERON_URI_IPC == uri->type ?
         &uri->params.ipc.additional_params : &uri->params.udp.additional_params;
 
-    if ((value_str = aeron_uri_find_param_value(uri_params, AERON_UDP_CHANNEL_RELIABLE_KEY)) != NULL &&
-        strncmp("false", value_str, strlen("false")) == 0)
+    if (aeron_uri_get_bool(uri_params, AERON_UDP_CHANNEL_RELIABLE_KEY, &params->is_reliable) < 0)
     {
-        params->is_reliable = false;
+        return -1;
     }
 
-    if ((value_str = aeron_uri_find_param_value(uri_params, AERON_URI_SPARSE_TERM_KEY)) != NULL &&
-        strncmp("true", value_str, strlen("true")) == 0)
+    if (aeron_uri_get_bool(uri_params, AERON_URI_SPARSE_TERM_KEY, &params->is_sparse) < 0)
     {
-        params->is_sparse = true;
+        return -1;
     }
 
-    if ((value_str = aeron_uri_find_param_value(uri_params, AERON_URI_TETHER_KEY)) != NULL &&
-        strncmp("false", value_str, strlen("false")) == 0)
+    if (aeron_uri_get_bool(uri_params, AERON_URI_TETHER_KEY, &params->is_tether) < 0)
     {
-        params->is_tether = false;
+        return -1;
+    }
+
+    if (aeron_uri_get_bool(uri_params, AERON_URI_REJOIN_KEY, &params->is_rejoin) < 0)
+    {
+        return -1;
     }
 
     params->group = aeron_config_parse_inferable_boolean(
         aeron_uri_find_param_value(uri_params, AERON_URI_GROUP_KEY), context->receiver_group_consideration);
-
-    if ((value_str = aeron_uri_find_param_value(uri_params, AERON_URI_REJOIN_KEY)) != NULL &&
-        strncmp("false", value_str, strlen("false")) == 0)
-    {
-        params->is_rejoin = false;
-    }
 
     if (aeron_uri_subscription_session_id_param(uri_params, params) < 0)
     {

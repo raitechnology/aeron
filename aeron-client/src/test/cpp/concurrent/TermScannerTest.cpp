@@ -16,10 +16,9 @@
 
 #include <gtest/gtest.h>
 
-#include <thread>
 #include "MockAtomicBuffer.h"
-#include <concurrent/logbuffer/TermScanner.h>
-#include <concurrent/logbuffer/LogBufferDescriptor.h>
+#include "concurrent/logbuffer/TermScanner.h"
+#include "concurrent/logbuffer/LogBufferDescriptor.h"
 
 using namespace aeron::concurrent::logbuffer;
 using namespace aeron::concurrent::mock;
@@ -41,14 +40,14 @@ public:
         m_logBuffer.fill(0);
     }
 
-    virtual void SetUp()
+    void SetUp() override
     {
         m_logBuffer.fill(0);
     }
 
 protected:
-    AERON_DECL_ALIGNED(log_buffer_t m_logBuffer, 16);
-    AERON_DECL_ALIGNED(packet_t m_hdrBuffer, 16);
+    AERON_DECL_ALIGNED(log_buffer_t m_logBuffer, 16) = {};
+    AERON_DECL_ALIGNED(packet_t m_hdrBuffer, 16) = {};
     MockAtomicBuffer m_termBuffer;
     AtomicBuffer m_packet;
 };
@@ -109,7 +108,7 @@ TEST_F(TermScannerTest, shouldFailToScanMessageLargerThanMaxLength)
 }
 
 static std::int32_t expectScanTwoMessages(
-    MockAtomicBuffer& buffer, std::int32_t frameLengthOne, std::int32_t frameLengthTwo,
+    MockAtomicBuffer &buffer, std::int32_t frameLengthOne, std::int32_t frameLengthTwo,
     std::int32_t frameOffset = 0,
     std::int16_t frameTypeOne = DataFrameHeader::HDR_TYPE_DATA,
     std::int16_t frameTypeTwo = DataFrameHeader::HDR_TYPE_DATA)

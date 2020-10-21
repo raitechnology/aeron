@@ -15,6 +15,7 @@
  */
 package io.aeron.driver.status;
 
+import io.aeron.AeronCounters;
 import io.aeron.status.ChannelEndpointStatus;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.status.AtomicCounter;
@@ -28,7 +29,7 @@ public class ReceiveChannelStatus
     /**
      * Type id of a receive channel status indicator.
      */
-    public static final int RECEIVE_CHANNEL_STATUS_TYPE_ID = 7;
+    public static final int RECEIVE_CHANNEL_STATUS_TYPE_ID = AeronCounters.DRIVER_RECEIVE_CHANNEL_STATUS_TYPE_ID;
 
     /**
      * Human readable name for the counter.
@@ -36,9 +37,12 @@ public class ReceiveChannelStatus
     public static final String NAME = "rcv-channel";
 
     public static AtomicCounter allocate(
-        final MutableDirectBuffer tempBuffer, final CountersManager countersManager, final String channel)
+        final MutableDirectBuffer tempBuffer,
+        final CountersManager countersManager,
+        final long registrationId,
+        final String channel)
     {
         return ChannelEndpointStatus.allocate(
-            tempBuffer, NAME, RECEIVE_CHANNEL_STATUS_TYPE_ID, countersManager, channel);
+            tempBuffer, NAME, RECEIVE_CHANNEL_STATUS_TYPE_ID, countersManager, registrationId, channel);
     }
 }

@@ -20,12 +20,10 @@
 #include <climits>
 #include <functional>
 #include <algorithm>
-#include <util/Index.h>
-#include <util/LangUtil.h>
-#include <concurrent/AtomicBuffer.h>
-#include <concurrent/Atomic64.h>
-#include "RingBufferDescriptor.h"
-#include "RecordDescriptor.h"
+#include "util/LangUtil.h"
+#include "concurrent/AtomicBuffer.h"
+#include "concurrent/ringbuffer/RingBufferDescriptor.h"
+#include "concurrent/ringbuffer/RecordDescriptor.h"
 
 namespace aeron { namespace concurrent { namespace ringbuffer {
 
@@ -49,7 +47,7 @@ public:
     }
 
     OneToOneRingBuffer(const OneToOneRingBuffer &) = delete;
-    OneToOneRingBuffer &operator=(const OneToOneRingBuffer &) = delete;
+    OneToOneRingBuffer & operator = (const OneToOneRingBuffer &) = delete;
 
     inline util::index_t capacity() const
     {
@@ -132,7 +130,7 @@ public:
             {
                 if (bytesRead != 0)
                 {
-                    m_buffer.setMemory(headIndex, static_cast<size_t>(bytesRead), 0);
+                    m_buffer.setMemory(headIndex, static_cast<std::size_t>(bytesRead), 0);
                     m_buffer.putInt64Ordered(m_headPositionIndex, head + bytesRead);
                 }
             }};
@@ -158,7 +156,9 @@ public:
 
             ++messagesRead;
             handler(
-                msgTypeId, m_buffer, RecordDescriptor::encodedMsgOffset(recordIndex),
+                msgTypeId,
+                m_buffer,
+                RecordDescriptor::encodedMsgOffset(recordIndex),
                 recordLength - RecordDescriptor::HEADER_LENGTH);
         }
 
@@ -214,7 +214,7 @@ public:
         }
         while (headAfter != headBefore);
 
-        int64_t size = tail - headAfter;
+        std::int64_t size = tail - headAfter;
         if (size < 0)
         {
             return 0;

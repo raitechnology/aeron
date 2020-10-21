@@ -17,7 +17,7 @@
 #ifndef AERON_RECEIVE_CHANNEL_ENDPOINT_H
 #define AERON_RECEIVE_CHANNEL_ENDPOINT_H
 
-#include <collections/aeron_int64_counter_map.h>
+#include "collections/aeron_int64_counter_map.h"
 #include "aeron_data_packet_dispatcher.h"
 #include "aeron_udp_channel.h"
 #include "aeron_udp_channel_transport.h"
@@ -125,6 +125,7 @@ int aeron_receive_channel_endpoint_send_rttm(
 
 void aeron_receive_channel_endpoint_dispatch(
     aeron_udp_channel_data_paths_t *data_paths,
+    aeron_udp_channel_transport_t *transport,
     void *receiver_clientd,
     void *endpoint_clientd,
     void *destination_clientd,
@@ -158,14 +159,10 @@ int aeron_receive_channel_endpoint_incref_to_stream(aeron_receive_channel_endpoi
 int aeron_receive_channel_endpoint_decref_to_stream(aeron_receive_channel_endpoint_t *endpoint, int32_t stream_id);
 
 int aeron_receive_channel_endpoint_incref_to_stream_and_session(
-    aeron_receive_channel_endpoint_t *endpoint,
-    int32_t stream_id,
-    int32_t session_id);
+    aeron_receive_channel_endpoint_t *endpoint, int32_t stream_id, int32_t session_id);
 
 int aeron_receive_channel_endpoint_decref_to_stream_and_session(
-    aeron_receive_channel_endpoint_t *endpoint,
-    int32_t stream_id,
-    int32_t session_id);
+    aeron_receive_channel_endpoint_t *endpoint, int32_t stream_id, int32_t session_id);
 
 int aeron_receive_channel_endpoint_on_add_subscription(
     aeron_receive_channel_endpoint_t *endpoint, int32_t stream_id);
@@ -177,8 +174,7 @@ int aeron_receive_channel_endpoint_on_remove_subscription_by_session(
     aeron_receive_channel_endpoint_t *endpoint, int32_t stream_id, int32_t session_id);
 
 int aeron_receive_channel_endpoint_add_destination(
-    aeron_receive_channel_endpoint_t *endpoint,
-    aeron_receive_destination_t *destination);
+    aeron_receive_channel_endpoint_t *endpoint, aeron_receive_destination_t *destination);
 int aeron_receive_channel_endpoint_remove_destination(
     aeron_receive_channel_endpoint_t *endpoint,
     aeron_udp_channel_t *channel,

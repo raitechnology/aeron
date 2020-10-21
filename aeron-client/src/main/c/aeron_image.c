@@ -18,15 +18,50 @@
 
 #include "aeron_image.h"
 #include "aeron_alloc.h"
-#include "util/aeron_error.h"
 #include "aeron_log_buffer.h"
 #include "aeron_subscription.h"
+
+#ifdef _MSC_VER
+#define _Static_assert static_assert
+#endif
+
+_Static_assert(
+    sizeof(aeron_header_values_frame_t) == sizeof(aeron_data_header_t),
+    "sizeof(aeron_header_values_frame_t) must match sizeof(aeron_data_header_t)");
+_Static_assert(
+    offsetof(aeron_header_values_frame_t, frame_length) == offsetof(aeron_frame_header_t, frame_length),
+    "offsetof(aeron_header_values_frame_t, frame_length) must match offsetof(aeron_frame_header_t, frame_length)");
+_Static_assert(
+    offsetof(aeron_header_values_frame_t, version) == offsetof(aeron_frame_header_t, version),
+    "offsetof(aeron_header_values_frame_t, version) must match offsetof(aeron_frame_header_t, version)");
+_Static_assert(
+    offsetof(aeron_header_values_frame_t, flags) == offsetof(aeron_frame_header_t, flags),
+    "offsetof(aeron_header_values_frame_t, flags) == offsetof(aeron_frame_header_t, flags)");
+_Static_assert(
+    offsetof(aeron_header_values_frame_t, type) == offsetof(aeron_frame_header_t, type),
+    "offsetof(aeron_header_values_frame_t, type) == offsetof(aeron_frame_header_t, type)");
+_Static_assert(
+    offsetof(aeron_header_values_frame_t, term_offset) == offsetof(aeron_data_header_t, term_offset),
+    "offsetof(aeron_header_values_frame_t, term_offset) == offsetof(aeron_data_header_t, term_offset)");
+_Static_assert(
+    offsetof(aeron_header_values_frame_t, session_id) == offsetof(aeron_data_header_t, session_id),
+    "offsetof(aeron_header_values_frame_t, session_id) == offsetof(aeron_data_header_t, session_id)");
+_Static_assert(
+    offsetof(aeron_header_values_frame_t, stream_id) == offsetof(aeron_data_header_t, stream_id),
+    "offsetof(aeron_header_values_frame_t, stream_id) == offsetof(aeron_data_header_t, stream_id)");
+_Static_assert(
+    offsetof(aeron_header_values_frame_t, term_id) == offsetof(aeron_data_header_t, term_id),
+    "offsetof(aeron_header_values_frame_t, term_id) == offsetof(aeron_data_header_t, term_id)");
+_Static_assert(
+    offsetof(aeron_header_values_frame_t, reserved_value) == offsetof(aeron_data_header_t, reserved_value),
+    "offsetof(aeron_header_values_frame_t, reserved_value) == offsetof(aeron_data_header_t, reserved_value)");
 
 int aeron_image_create(
     aeron_image_t **image,
     aeron_subscription_t *subscription,
     aeron_client_conductor_t *conductor,
     aeron_log_buffer_t *log_buffer,
+    int32_t subscriber_position_id,
     int64_t *subscriber_position,
     int64_t correlation_id,
     int32_t session_id,
@@ -60,6 +95,7 @@ int aeron_image_create(
     _image->session_id = session_id;
     _image->removal_change_number = INT64_MAX;
     _image->final_position = 0;
+    _image->join_position = *subscriber_position;
     _image->refcnt = 1;
 
     _image->metadata =
@@ -73,6 +109,7 @@ int aeron_image_create(
     _image->is_lingering = false;
 
     *image = _image;
+
     return 0;
 }
 
@@ -95,31 +132,27 @@ void aeron_image_force_close(aeron_image_t *image)
     AERON_PUT_ORDERED(image->is_closed, true);
 }
 
-int32_t aeron_image_session_id(aeron_image_t *image)
+int aeron_image_constants(aeron_image_t *image, aeron_image_constants_t *constants)
 {
-    if (NULL == image)
-    {
-        errno = EINVAL;
-        aeron_set_err(EINVAL, "aeron_image_session_id: %s", strerror(EINVAL));
-        return -1;
-    }
-
-    errno = 0;
-    aeron_set_err(0, "no error");
-
-    return image->session_id;
-}
-
-const char *aeron_image_source_identity(aeron_image_t *image)
-{
-    if (NULL == image)
+    if (NULL == image || NULL == constants)
     {
         errno = EINVAL;
         aeron_set_err(EINVAL, "%s", strerror(EINVAL));
-        return NULL;
+        return -1;
     }
 
-    return image->source_identity;
+    constants->subscription = image->subscription;
+    constants->source_identity = image->source_identity;
+    constants->correlation_id = image->correlation_id;
+    constants->join_position = image->join_position;
+    constants->position_bits_to_shift = image->position_bits_to_shift;
+    constants->term_buffer_length = (size_t)image->term_length_mask + 1;
+    constants->mtu_length = (size_t)image->metadata->mtu_length;
+    constants->session_id = image->session_id;
+    constants->initial_term_id = image->metadata->initial_term_id;
+    constants->subscriber_position_id = image->subscriber_position_id;
+
+    return 0;
 }
 
 int64_t aeron_image_position(aeron_image_t *image)
@@ -256,13 +289,19 @@ int aeron_image_poll(aeron_image_t *image, aeron_fragment_handler_t handler, voi
 
         if (AERON_HDR_TYPE_PAD != frame->frame_header.type)
         {
-            aeron_header_t header = { frame };
+            aeron_header_t header =
+            {
+                frame,
+                image->metadata->initial_term_id,
+                image->position_bits_to_shift
+            };
 
             handler(
                 clientd,
                 term_buffer + frame_offset + AERON_DATA_HEADER_LENGTH,
                 frame_length - AERON_DATA_HEADER_LENGTH,
                 &header);
+
             ++fragments_read;
         }
     }
@@ -323,13 +362,18 @@ int aeron_image_controlled_poll(
             continue;
         }
 
-        aeron_header_t header = { frame };
-        aeron_controlled_fragment_handler_action_t action =
-            handler(
-                clientd,
-                term_buffer + frame_offset + AERON_DATA_HEADER_LENGTH,
-                frame_length - AERON_DATA_HEADER_LENGTH,
-                &header);
+        aeron_header_t header =
+        {
+            frame,
+            image->metadata->initial_term_id,
+            image->position_bits_to_shift
+        };
+
+        aeron_controlled_fragment_handler_action_t action = handler(
+            clientd,
+            term_buffer + frame_offset + AERON_DATA_HEADER_LENGTH,
+            frame_length - AERON_DATA_HEADER_LENGTH,
+            &header);
 
         if (AERON_ACTION_ABORT == action)
         {
@@ -405,7 +449,12 @@ int aeron_image_bounded_poll(
 
         if (AERON_HDR_TYPE_PAD != frame->frame_header.type)
         {
-            aeron_header_t header = { frame };
+            aeron_header_t header =
+            {
+                frame,
+                image->metadata->initial_term_id,
+                image->position_bits_to_shift
+            };
 
             handler(
                 clientd,
@@ -475,13 +524,18 @@ int aeron_image_bounded_controlled_poll(
             continue;
         }
 
-        aeron_header_t header = { frame };
-        aeron_controlled_fragment_handler_action_t action =
-            handler(
-                clientd,
-                term_buffer + frame_offset + AERON_DATA_HEADER_LENGTH,
-                frame_length - AERON_DATA_HEADER_LENGTH,
-                &header);
+        aeron_header_t header =
+        {
+            frame,
+            image->metadata->initial_term_id,
+            image->position_bits_to_shift
+        };
+
+        aeron_controlled_fragment_handler_action_t action = handler(
+            clientd,
+            term_buffer + frame_offset + AERON_DATA_HEADER_LENGTH,
+            frame_length - AERON_DATA_HEADER_LENGTH,
+            &header);
 
         if (AERON_ACTION_ABORT == action)
         {
@@ -577,13 +631,18 @@ int64_t aeron_image_controlled_peek(
             continue;
         }
 
-        aeron_header_t header = { frame };
-        aeron_controlled_fragment_handler_action_t action =
-            handler(
-                clientd,
-                term_buffer + frame_offset + AERON_DATA_HEADER_LENGTH,
-                frame_length - AERON_DATA_HEADER_LENGTH,
-                &header);
+        aeron_header_t header =
+        {
+            frame,
+            image->metadata->initial_term_id,
+            image->position_bits_to_shift
+        };
+
+        aeron_controlled_fragment_handler_action_t action = handler(
+            clientd,
+            term_buffer + frame_offset + AERON_DATA_HEADER_LENGTH,
+            frame_length - AERON_DATA_HEADER_LENGTH,
+            &header);
 
         if (AERON_ACTION_ABORT == action)
         {
@@ -647,7 +706,6 @@ int aeron_image_block_poll(
         }
 
         aligned_frame_length = AERON_ALIGN(frame_length, AERON_LOGBUFFER_FRAME_ALIGNMENT);
-        scan_offset += aligned_frame_length;
 
         if (AERON_HDR_TYPE_PAD == frame->frame_header.type)
         {
@@ -677,7 +735,7 @@ int aeron_image_block_poll(
         handler(
             clientd,
             term_buffer + offset,
-            length,
+            (size_t)length,
             image->session_id,
             term_id);
     }
@@ -700,7 +758,7 @@ bool aeron_image_is_closed(aeron_image_t *image)
 }
 
 extern int64_t aeron_image_removal_change_number(aeron_image_t *image);
-extern bool aeron_image_is_in_use_by_subcription(aeron_image_t *image, int64_t last_change_number);
+extern bool aeron_image_is_in_use_by_subscription(aeron_image_t *image, int64_t last_change_number);
 extern int aeron_image_validate_position(aeron_image_t *image, int64_t position);
 extern int64_t aeron_image_incr_refcnt(aeron_image_t *image);
 extern int64_t aeron_image_decr_refcnt(aeron_image_t *image);

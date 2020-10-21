@@ -23,7 +23,6 @@ extern "C"
 {
 #include "uri/aeron_uri.h"
 #include "util/aeron_netutil.h"
-#include "util/aeron_error.h"
 #include "aeron_driver_context.h"
 #include "aeron_driver_conductor.h"
 #include "aeron_name_resolver.h"
@@ -42,16 +41,16 @@ public:
         m_conductor.context = m_context;
     }
 
-    virtual ~UriTest()
+    ~UriTest() override
     {
         aeron_uri_close(&m_uri);
         aeron_driver_context_close(m_context);
     }
 
 protected:
-    aeron_uri_t m_uri;
-    aeron_driver_context_t *m_context = NULL;
-    aeron_driver_conductor_t m_conductor;
+    aeron_uri_t m_uri = {};
+    aeron_driver_context_t *m_context = nullptr;
+    aeron_driver_conductor_t m_conductor = {};
 };
 
 #define AERON_URI_PARSE(uri_str, uri) aeron_uri_parse(strlen(uri_str), uri_str, uri)
@@ -130,6 +129,16 @@ TEST_F(UriTest, shouldParseWithMultipleParams)
     EXPECT_EQ(m_uri.params.udp.additional_params.length, 1u);
     EXPECT_EQ(std::string(m_uri.params.udp.additional_params.array[0].key), "port");
     EXPECT_EQ(std::string(m_uri.params.udp.additional_params.array[0].value), "4567");
+}
+
+TEST_F(UriTest, shouldParseCongestionControlParam)
+{
+    EXPECT_EQ(AERON_URI_PARSE("aeron:udp?endpoint=224.10.9.8|cc=static", &m_uri), 0);
+    ASSERT_EQ(m_uri.type, AERON_URI_UDP);
+    EXPECT_EQ(std::string(m_uri.params.udp.endpoint), "224.10.9.8");
+    EXPECT_EQ(m_uri.params.udp.additional_params.length, 1u);
+    EXPECT_EQ(std::string(m_uri.params.udp.additional_params.array[0].key), AERON_URI_CC_KEY);
+    EXPECT_EQ(std::string(m_uri.params.udp.additional_params.array[0].value), AERON_STATICWINDOWCONGESTIONCONTROL_CC_PARAM_VALUE);
 }
 
 TEST_F(UriTest, shouldParseNoPublicationParams)
@@ -350,7 +359,6 @@ TEST_F(UriTest, shouldParseSubscriptionParamReliableDefault)
     EXPECT_EQ(params.is_reliable, true);
 }
 
-
 TEST_F(UriTest, shouldParseSubscriptionSessionId)
 {
     aeron_uri_subscription_params_t params;
@@ -366,13 +374,12 @@ class UriResolverTest : public testing::Test
 public:
     UriResolverTest() :
         addr_in((struct sockaddr_in *)&m_addr),
-        addr_in6((struct sockaddr_in6 *)&m_addr),
-        m_prefixlen(0)
+        addr_in6((struct sockaddr_in6 *)&m_addr)
     {
-        aeron_default_name_resolver_supplier(&m_resolver, NULL, NULL);
+        aeron_default_name_resolver_supplier(&m_resolver, nullptr, nullptr);
     }
 
-    bool ipv4_match(const char *addr1_str, const char *addr2_str, size_t prefixlen)
+    static bool ipv4_match(const char *addr1_str, const char *addr2_str, size_t prefixlen)
     {
         struct sockaddr_in addr1, addr2;
 
@@ -384,7 +391,7 @@ public:
         return aeron_ipv4_does_prefix_match(&addr1.sin_addr, &addr2.sin_addr, prefixlen);
     }
 
-    bool ipv6_match(const char *addr1_str, const char *addr2_str, size_t prefixlen)
+    static bool ipv6_match(const char *addr1_str, const char *addr2_str, size_t prefixlen)
     {
         struct sockaddr_in6 addr1, addr2;
 
@@ -397,7 +404,7 @@ public:
         return aeron_ipv6_does_prefix_match(&addr1.sin6_addr, &addr2.sin6_addr, prefixlen);
     }
 
-    size_t ipv6_prefixlen(const char *aadr_str)
+    static size_t ipv6_prefixlen(const char *aadr_str)
     {
         struct sockaddr_in6 addr;
 
@@ -409,7 +416,7 @@ public:
         return aeron_ipv6_netmask_to_prefixlen(&addr.sin6_addr);
     }
 
-    size_t ipv4_prefixlen(const char *addr_str)
+    static size_t ipv4_prefixlen(const char *addr_str)
     {
         struct sockaddr_in addr;
 
@@ -427,12 +434,12 @@ public:
     }
 
 protected:
-    aeron_uri_t m_uri;
-    struct sockaddr_storage m_addr;
-    struct sockaddr_in *addr_in;
-    struct sockaddr_in6 *addr_in6;
-    size_t m_prefixlen;
-    aeron_name_resolver_t m_resolver;
+    aeron_uri_t m_uri = {};
+    struct sockaddr_storage m_addr = {};
+    struct sockaddr_in *addr_in = nullptr;
+    struct sockaddr_in6 *addr_in6 = nullptr;
+    size_t m_prefixlen = 0;
+    aeron_name_resolver_t m_resolver = {};
 };
 
 TEST_F(UriResolverTest, shouldResolveIpv4DottedDecimalAndPort)
@@ -619,7 +626,7 @@ TEST_F(UriResolverTest, shouldCalculateIpv6PrefixlenFromNetmask)
  * WARNING: single threaded only due to global lookup func usage
  */
 
-struct ifaddrs *global_ifaddrs = NULL;
+struct ifaddrs *global_ifaddrs = nullptr;
 
 class UriLookupTest : public testing::Test
 {
@@ -673,7 +680,7 @@ public:
 
     static void initialize_ifaddrs()
     {
-        if (NULL == global_ifaddrs)
+        if (nullptr == global_ifaddrs)
         {
             add_ifaddr(AF_INET, "lo0", "127.0.0.1", "255.0.0.0", IFF_MULTICAST | IFF_UP | IFF_LOOPBACK);
             add_ifaddr(AF_INET, "eth0:0", "192.168.0.20", "255.255.255.0", IFF_MULTICAST | IFF_UP);

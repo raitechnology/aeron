@@ -150,10 +150,10 @@ public class ErrorResponseFlyweight
     /**
      * Length of the error response in bytes.
      *
-     * @return length of the error response
+     * @return length of the error response in bytes.
      */
     public int length()
     {
-        return buffer.getInt(offset + ERROR_MESSAGE_OFFSET) + ERROR_MESSAGE_OFFSET + BitUtil.SIZE_OF_INT;
+        return ERROR_MESSAGE_OFFSET + BitUtil.SIZE_OF_INT + buffer.getInt(offset + ERROR_MESSAGE_OFFSET);
     }
 }

@@ -31,11 +31,6 @@
 
 #include "aeronc.h"
 #include "aeron_client.h"
-#include "util/aeron_error.h"
-#include "aeron_alloc.h"
-#include "aeron_context.h"
-#include "aeron_cnc_file_descriptor.h"
-#include "concurrent/aeron_counters_manager.h"
 
 inline static int aeron_do_work(void *clientd)
 {
@@ -180,13 +175,26 @@ int aeron_close(aeron_t *client)
     return 0;
 }
 
+bool aeron_is_closed(aeron_t *client)
+{
+    return aeron_client_conductor_is_closed(&client->conductor);
+}
+
 typedef struct aeron_print_counters_stream_out_stct
 {
     void (*stream_out)(const char *);
 }
 aeron_print_counters_stream_out_t;
 
-void aeron_print_counters_format(int64_t value, int32_t id, const char *label, size_t label_length, void *clientd)
+void aeron_print_counters_format(
+    int64_t value,
+    int32_t id,
+    int32_t type_id,
+    const uint8_t *key,
+    size_t key_length,
+    const char *label,
+    size_t label_length,
+    void *clientd)
 {
     char buffer[AERON_MAX_PATH];
     aeron_print_counters_stream_out_t *out = (aeron_print_counters_stream_out_t *)clientd;
@@ -273,6 +281,32 @@ inline static void aeron_async_cmd_free(aeron_client_registering_resource_t *asy
     }
 }
 
+int64_t aeron_async_add_counter_get_registration_id(aeron_async_add_counter_t *add_counter)
+{
+    return add_counter->registration_id;
+}
+
+int64_t aeron_async_add_publication_get_registration_id(aeron_async_add_publication_t *add_publication)
+{
+    return add_publication->registration_id;
+}
+
+int64_t aeron_async_add_exclusive_exclusive_publication_get_registration_id(
+    aeron_async_add_exclusive_publication_t *add_exclusive_publication)
+{
+    return add_exclusive_publication->registration_id;
+}
+
+int64_t aeron_async_add_subscription_get_registration_id(aeron_async_add_subscription_t *add_subscription)
+{
+    return add_subscription->registration_id;
+}
+
+int64_t aeron_async_destination_get_registration_id(aeron_async_destination_t *async_destination)
+{
+    return async_destination->registration_id;
+}
+
 int aeron_async_add_publication(
     aeron_async_add_publication_t **async, aeron_t *client, const char *uri, int32_t stream_id)
 {
@@ -324,7 +358,8 @@ int aeron_async_add_publication_poll(aeron_publication_t **publication, aeron_as
 
         case AERON_CLIENT_TIMEOUT_MEDIA_DRIVER:
         {
-            aeron_set_err(ETIMEDOUT, "%s", "async_add_publication no response from media driver");
+            aeron_set_err(
+                AERON_CLIENT_ERROR_DRIVER_TIMEOUT, "%s", "async_add_publication no response from media driver");
             aeron_async_cmd_free(async);
             return -1;
         }
@@ -390,7 +425,8 @@ int aeron_async_add_exclusive_publication_poll(
 
         case AERON_CLIENT_TIMEOUT_MEDIA_DRIVER:
         {
-            aeron_set_err(ETIMEDOUT, "%s", "async_add_exclusive_publication no response from media driver");
+            aeron_set_err(
+                AERON_CLIENT_ERROR_DRIVER_TIMEOUT, "%s", "async_add_publication no response from media driver");
             aeron_async_cmd_free(async);
             return -1;
         }
@@ -470,7 +506,8 @@ int aeron_async_add_subscription_poll(aeron_subscription_t **subscription, aeron
 
         case AERON_CLIENT_TIMEOUT_MEDIA_DRIVER:
         {
-            aeron_set_err(ETIMEDOUT, "%s", "async_add_subscription no response from media driver");
+            aeron_set_err(
+                AERON_CLIENT_ERROR_DRIVER_TIMEOUT, "%s", "async_add_publication no response from media driver");
             aeron_async_cmd_free(async);
             return -1;
         }
@@ -548,7 +585,8 @@ int aeron_async_add_counter_poll(aeron_counter_t **counter, aeron_async_add_coun
 
         case AERON_CLIENT_TIMEOUT_MEDIA_DRIVER:
         {
-            aeron_set_err(ETIMEDOUT, "%s", "async_add_counter no response from media driver");
+            aeron_set_err(
+                AERON_CLIENT_ERROR_DRIVER_TIMEOUT, "%s", "async_add_publication no response from media driver");
             aeron_async_cmd_free(async);
             return -1;
         }
@@ -560,6 +598,163 @@ int aeron_async_add_counter_poll(aeron_counter_t **counter, aeron_async_add_coun
             return -1;
         }
     }
+}
+
+static int aeron_async_destination_poll(aeron_async_destination_t *async)
+{
+    if (NULL == async || AERON_CLIENT_TYPE_DESTINATION != async->type)
+    {
+        errno = EINVAL;
+        aeron_set_err(EINVAL, "aeron_async_add_counter_poll: %s", strerror(EINVAL));
+        return -1;
+    }
+
+    aeron_client_registration_status_t registration_status;
+    AERON_GET_VOLATILE(registration_status, async->registration_status);
+
+    switch (registration_status)
+    {
+        case AERON_CLIENT_AWAITING_MEDIA_DRIVER:
+        {
+            return 0;
+        }
+
+        case AERON_CLIENT_ERRORED_MEDIA_DRIVER:
+        {
+            aeron_set_err(EINVAL, "async_add_counter registration (error code %" PRId32 "): %*s",
+                async->error_code, async->error_message_length, async->error_message);
+            aeron_async_cmd_free(async);
+            return -1;
+        }
+
+        case AERON_CLIENT_REGISTERED_MEDIA_DRIVER:
+        {
+            aeron_async_cmd_free(async);
+            return 1;
+        }
+
+        case AERON_CLIENT_TIMEOUT_MEDIA_DRIVER:
+        {
+            aeron_set_err(
+                AERON_CLIENT_ERROR_DRIVER_TIMEOUT, "%s", "async_add_publication no response from media driver");
+            aeron_async_cmd_free(async);
+            return -1;
+        }
+
+        default:
+        {
+            aeron_set_err(EINVAL, "async_add_counter async status %s", "unknown");
+            aeron_async_cmd_free(async);
+            return -1;
+        }
+    }
+}
+
+int aeron_publication_async_add_destination(
+    aeron_async_destination_t **async, aeron_t *client, aeron_publication_t *publication, const char *uri)
+{
+    if (NULL == publication || uri == NULL)
+    {
+        errno = EINVAL;
+        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
+        return -1;
+    }
+
+    return aeron_client_conductor_async_add_publication_destination(async, &client->conductor, publication, uri);
+}
+
+int aeron_publication_async_destination_poll(aeron_async_destination_t *async)
+{
+    return aeron_async_destination_poll(async);
+}
+
+int aeron_publication_async_remove_destination(
+    aeron_async_destination_t **async,
+    aeron_t *client,
+    aeron_publication_t *publication,
+    const char *uri)
+{
+    if (NULL == publication || uri == NULL)
+    {
+        errno = EINVAL;
+        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
+        return -1;
+    }
+
+    return aeron_client_conductor_async_remove_publication_destination(async, &client->conductor, publication, uri);
+}
+
+int aeron_subscription_async_add_destination(
+    aeron_async_destination_t **async, aeron_t *client, aeron_subscription_t *subscription, const char *uri)
+{
+    if (NULL == subscription || uri == NULL)
+    {
+        errno = EINVAL;
+        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
+        return -1;
+    }
+
+    return aeron_client_conductor_async_add_subscription_destination(async, &client->conductor, subscription, uri);
+}
+
+int aeron_subscription_async_destination_poll(aeron_async_destination_t *async)
+{
+    return aeron_async_destination_poll(async);
+}
+
+int aeron_subscription_async_remove_destination(
+    aeron_async_destination_t **async,
+    aeron_t *client,
+    aeron_subscription_t *subscription,
+    const char *uri)
+{
+    if (NULL == subscription || uri == NULL)
+    {
+        errno = EINVAL;
+        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
+        return -1;
+    }
+
+    return aeron_client_conductor_async_remove_subscription_destination(async, &client->conductor, subscription, uri);
+}
+
+int aeron_exclusive_publication_async_add_destination(
+    aeron_async_destination_t **async,
+    aeron_t *client,
+    aeron_exclusive_publication_t *publication,
+    const char *uri)
+{
+    if (NULL == publication || uri == NULL)
+    {
+        errno = EINVAL;
+        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
+        return -1;
+    }
+
+    return aeron_client_conductor_async_add_exclusive_publication_destination(
+        async, &client->conductor, publication, uri);
+}
+
+int aeron_exclusive_publication_async_destination_poll(aeron_async_destination_t *async)
+{
+    return aeron_async_destination_poll(async);
+}
+
+int aeron_exclusive_publication_async_remove_destination(
+    aeron_async_destination_t **async,
+    aeron_t *client,
+    aeron_exclusive_publication_t *publication,
+    const char *uri)
+{
+    if (NULL == publication || uri == NULL)
+    {
+        errno = EINVAL;
+        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
+        return -1;
+    }
+
+    return aeron_client_conductor_async_remove_exclusive_publication_destination(
+        async, &client->conductor, publication, uri);
 }
 
 int aeron_client_handler_cmd_await_processed(aeron_client_handler_cmd_t *cmd)

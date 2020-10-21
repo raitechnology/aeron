@@ -17,6 +17,7 @@ package io.aeron.samples.raw;
 
 import io.aeron.driver.Configuration;
 import org.agrona.concurrent.SigInt;
+import org.agrona.hints.ThreadHints;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -37,10 +38,18 @@ public class ReceiveSendUdpPong
     public static void main(final String[] args) throws IOException
     {
         int numChannels = 1;
-        if (1 == args.length)
+        if (1 <= args.length)
         {
             numChannels = Integer.parseInt(args[0]);
         }
+
+        String remoteHost = "localhost";
+        if (2 <= args.length)
+        {
+            remoteHost = args[1];
+        }
+
+        System.out.printf("Number of channels: %d, Remote host: %s%n", numChannels, remoteHost);
 
         final ByteBuffer buffer = ByteBuffer.allocateDirect(Configuration.MTU_LENGTH_DEFAULT);
 
@@ -49,10 +58,10 @@ public class ReceiveSendUdpPong
         {
             receiveChannels[i] = DatagramChannel.open();
             init(receiveChannels[i]);
-            receiveChannels[i].bind(new InetSocketAddress("localhost", Common.PING_PORT + i));
+            receiveChannels[i].bind(new InetSocketAddress("0.0.0.0", Common.PING_PORT + i));
         }
 
-        final InetSocketAddress sendAddress = new InetSocketAddress("localhost", Common.PONG_PORT);
+        final InetSocketAddress sendAddress = new InetSocketAddress(remoteHost, Common.PONG_PORT);
         final DatagramChannel sendChannel = DatagramChannel.open();
         Common.init(sendChannel);
 
@@ -66,6 +75,7 @@ public class ReceiveSendUdpPong
             boolean available = false;
             while (!available)
             {
+                ThreadHints.onSpinWait();
                 if (!running.get())
                 {
                     return;
@@ -81,12 +91,15 @@ public class ReceiveSendUdpPong
                 }
             }
 
+            buffer.flip();
+            final int length = buffer.remaining();
             final long receivedSequenceNumber = buffer.getLong(0);
             final long receivedTimestamp = buffer.getLong(SIZE_OF_LONG);
 
             buffer.clear();
             buffer.putLong(receivedSequenceNumber);
             buffer.putLong(receivedTimestamp);
+            buffer.position(length);
             buffer.flip();
 
             sendChannel.send(buffer, sendAddress);

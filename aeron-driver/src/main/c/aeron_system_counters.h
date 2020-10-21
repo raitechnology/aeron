@@ -17,7 +17,6 @@
 #ifndef AERON_SYSTEM_COUNTERS_H
 #define AERON_SYSTEM_COUNTERS_H
 
-#include <stdint.h>
 #include "concurrent/aeron_counters_manager.h"
 
 typedef enum aeron_system_counter_enum_stct
@@ -60,8 +59,6 @@ typedef struct aeron_system_counter_stct
     int32_t id;
 }
 aeron_system_counter_t;
-
-#define AERON_SYSTEM_COUNTER_TYPE_ID (0)
 
 typedef struct aeron_system_counters_stct
 {

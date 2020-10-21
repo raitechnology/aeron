@@ -24,7 +24,7 @@
 #include <windows.h>
 #endif
 
-#include <util/Exceptions.h>
+#include "util/Exceptions.h"
 
 namespace aeron { namespace test {
 
@@ -39,7 +39,7 @@ std::string makeTempFileName()
     return std::string(rawname);
 
 #else
-    char tmpdir[MAX_PATH+1];
+    char tmpdir[MAX_PATH + 1];
     char tmpfile[MAX_PATH];
 
     if (::GetTempPath(MAX_PATH, &tmpdir[0]) > 0)

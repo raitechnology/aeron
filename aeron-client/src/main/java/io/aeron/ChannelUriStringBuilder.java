@@ -24,7 +24,7 @@ import static io.aeron.logbuffer.LogBufferDescriptor.TERM_MAX_LENGTH;
 import static org.agrona.SystemUtil.*;
 
 /**
- * Type safe means of building a channel URI associated with a {@link Publication} or {@link Subscription}.
+ * Typesafe means of building a channel URI associated with a {@link Publication} or {@link Subscription}.
  *
  * @see Aeron#addPublication(String, int)
  * @see Aeron#addSubscription(String, int)
@@ -32,6 +32,11 @@ import static org.agrona.SystemUtil.*;
  */
 public class ChannelUriStringBuilder
 {
+    /**
+     * Can be used when the likes of session-id wants to reference another entity such as a tagged publication.
+     * <p>
+     * For example {@code session-id=tag:777} where the publication uses {@code tags=777}.
+     */
     public static final String TAG_PREFIX = "tag:";
 
     private final StringBuilder sb = new StringBuilder(64);
@@ -61,6 +66,7 @@ public class ChannelUriStringBuilder
     private Boolean tether;
     private Boolean group;
     private Boolean rejoin;
+    private Boolean ssc;
     private boolean isSessionIdTagged;
 
     /**
@@ -1105,7 +1111,7 @@ public class ChannelUriStringBuilder
     }
 
     /**
-     * Set the alias for a URI. Alias's are not interpreted by Aeron and are to be used by the application
+     * Set the alias for a URI. Alias's are not interpreted by Aeron and are to be used by the application.
      *
      * @param alias for the URI.
      * @return this for a fluent API.
@@ -1141,7 +1147,7 @@ public class ChannelUriStringBuilder
     }
 
     /**
-     * Set the congestion control algorithm to be used on a channel.
+     * Set the congestion control algorithm to be used on a stream.
      *
      * @param congestionControl for the URI.
      * @return this for a fluent API.
@@ -1166,7 +1172,7 @@ public class ChannelUriStringBuilder
     }
 
     /**
-     * Get the congestion control algorithm to be used on a channel.
+     * Get the congestion control algorithm to be used on a stream.
      *
      * @return congestion control strategy for the channel.
      * @see CommonContext#CONGESTION_CONTROL_PARAM_NAME
@@ -1177,7 +1183,7 @@ public class ChannelUriStringBuilder
     }
 
     /**
-     * Set the flow control strategy to be used on a channel.
+     * Set the flow control strategy to be used on a stream.
      *
      * @param flowControl for the URI.
      * @return this for a fluent API.
@@ -1190,10 +1196,10 @@ public class ChannelUriStringBuilder
     }
 
     /**
-     * Set tagged flow control settings to be used on channel.  All specified values may be null and the default
+     * Set tagged flow control settings to be used on a stream. All specified values may be null and the default
      * specified in the MediaDriver.Context will be used instead.
      *
-     * @param groupTag  receiver tag for this channel.
+     * @param groupTag     receiver tag for this stream.
      * @param minGroupSize group size required to allow publications for this channel to be move to connected status.
      * @param timeout      timeout receivers, default is ns, but allows suffixing of time units (e.g. 5s).
      * @return this for fluent API.
@@ -1206,34 +1212,31 @@ public class ChannelUriStringBuilder
         if (null != groupTag || null != minGroupSize)
         {
             flowControlValue += ",g:";
-        }
 
-        if (null != groupTag)
-        {
-            flowControlValue += groupTag;
-        }
+            if (null != groupTag)
+            {
+                flowControlValue += groupTag;
+            }
 
-        if (null != minGroupSize)
-        {
-            flowControlValue += "/";
-            flowControlValue += minGroupSize;
+            if (null != minGroupSize)
+            {
+                flowControlValue += ("/" + minGroupSize);
+            }
         }
 
         if (null != timeout)
         {
-            flowControlValue += ",t:";
-            flowControlValue += timeout;
+            flowControlValue += (",t:" + timeout);
         }
 
         return flowControl(flowControlValue);
     }
 
-
     /**
-     * Set min flow control settings to be used on channel.  All specified values may be null and the default
+     * Set min flow control settings to be used on stream. All specified values may be null and the default
      * specified in the MediaDriver.Context will be used instead.
      *
-     * @param minGroupSize group size required to allow publications for this channel to be move to connected status.
+     * @param minGroupSize group size required to allow publications for this stream to be move to connected status.
      * @param timeout      timeout receivers, default is ns, but allows suffixing of time units (e.g. 5s).
      * @return this for fluent API.
      */
@@ -1243,14 +1246,12 @@ public class ChannelUriStringBuilder
 
         if (null != minGroupSize)
         {
-            flowControlValue += ",g:/";
-            flowControlValue += minGroupSize;
+            flowControlValue += (",g:/" + minGroupSize);
         }
 
         if (null != timeout)
         {
-            flowControlValue += ",t:";
-            flowControlValue += timeout;
+            flowControlValue += (",t:" + timeout);
         }
 
         return flowControl(flowControlValue);
@@ -1269,9 +1270,9 @@ public class ChannelUriStringBuilder
     }
 
     /**
-     * Get the flow control strategy to be used on a channel.
+     * Get the flow control strategy to be used on a stream.
      *
-     * @return flow control strategy for the channel.
+     * @return flow control strategy for the stream.
      * @see CommonContext#FLOW_CONTROL_PARAM_NAME
      */
     public String flowControl()
@@ -1280,7 +1281,7 @@ public class ChannelUriStringBuilder
     }
 
     /**
-     * Set the group tag (gtag) to be sent in SMs.
+     * Set the group tag (gtag) to be sent in SMs (Status Messages).
      *
      * @param groupTag to be sent in SMs
      * @return this for fluent API.
@@ -1293,7 +1294,7 @@ public class ChannelUriStringBuilder
     }
 
     /**
-     * Set the receiver tag to be value which is in the {@link ChannelUri} which may be null.
+     * Set the group tag (gtag) to be the value which is in the {@link ChannelUri} which may be null.
      *
      * @param channelUri to read the value from.
      * @return this for a fluent API.
@@ -1314,7 +1315,7 @@ public class ChannelUriStringBuilder
     }
 
     /**
-     * Get the group tag (gtag) to be sent in SMs.
+     * Get the group tag (gtag) to be sent in SMs (Status Messages).
      *
      * @return receiver tag to be sent in SMs.
      * @see CommonContext#GROUP_TAG_PARAM_NAME
@@ -1367,6 +1368,52 @@ public class ChannelUriStringBuilder
     public Boolean rejoin()
     {
         return rejoin;
+    }
+
+    /**
+     * Set the publication semantics for whether the presence of spy subscriptions simulate a connection.
+     *
+     * @param spiesSimulateConnection true if the presence of spy subscriptions simulate a connection.
+     * @return this for a fluent API.
+     * @see CommonContext#SPIES_SIMULATE_CONNECTION_PARAM_NAME
+     */
+    public ChannelUriStringBuilder spiesSimulateConnection(final Boolean spiesSimulateConnection)
+    {
+        this.ssc = spiesSimulateConnection;
+        return this;
+    }
+
+    /**
+     * Set the publication semantics for whether the presence of spy subscriptions simulate a connection to be what is
+     * in the {@link ChannelUri} which may be null.
+     *
+     * @param channelUri to read the value from.
+     * @return this for a fluent API.
+     * @see CommonContext#SPIES_SIMULATE_CONNECTION_PARAM_NAME
+     */
+    public ChannelUriStringBuilder spiesSimulateConnection(final ChannelUri channelUri)
+    {
+        final String sscValue = channelUri.get(SPIES_SIMULATE_CONNECTION_PARAM_NAME);
+        if (null == sscValue)
+        {
+            ssc = null;
+            return this;
+        }
+        else
+        {
+            return spiesSimulateConnection(Boolean.valueOf(sscValue));
+        }
+    }
+
+    /**
+     * Get the publication semantics for whether the presence of spy subscriptions simulate a connection.
+     *
+     * @return true if the presence of spy subscriptions simulate a connection, otherwise false.
+     * @see CommonContext#SPIES_SIMULATE_CONNECTION_PARAM_NAME
+     */
+    public Boolean spiesSimulateConnection()
+    {
+        return ssc;
     }
 
     /**
@@ -1526,6 +1573,11 @@ public class ChannelUriStringBuilder
             sb.append(REJOIN_PARAM_NAME).append('=').append(rejoin).append('|');
         }
 
+        if (null != ssc)
+        {
+            sb.append(SPIES_SIMULATE_CONNECTION_PARAM_NAME).append('=').append(ssc).append('|');
+        }
+
         final char lastChar = sb.charAt(sb.length() - 1);
         if (lastChar == '|' || lastChar == '?')
         {
@@ -1533,6 +1585,11 @@ public class ChannelUriStringBuilder
         }
 
         return sb.toString();
+    }
+
+    public String toString()
+    {
+        return build();
     }
 
     private static String prefixTag(final boolean isTagged, final Integer value)

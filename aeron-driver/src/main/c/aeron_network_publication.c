@@ -21,8 +21,8 @@
 
 #include <errno.h>
 #include <string.h>
-#include "aeron_socket.h"
 #include <inttypes.h>
+#include "aeron_socket.h"
 #include "concurrent/aeron_term_scanner.h"
 #include "util/aeron_error.h"
 #include "aeron_network_publication.h"
@@ -55,7 +55,6 @@ int aeron_network_publication_create(
     aeron_flow_control_strategy_t *flow_control_strategy,
     aeron_uri_publication_params_t *params,
     bool is_exclusive,
-    bool spies_simulate_connection,
     aeron_system_counters_t *system_counters)
 {
     char path[AERON_MAX_PATH];
@@ -102,7 +101,7 @@ int aeron_network_publication_create(
         return -1;
     }
 
-    if (context->map_raw_log_func(
+    if (context->raw_log_map_func(
         &_pub->mapped_raw_log, path, params->is_sparse, params->term_length, context->file_page_size) < 0)
     {
         aeron_free(_pub->log_file_name);
@@ -110,7 +109,9 @@ int aeron_network_publication_create(
         aeron_set_err(aeron_errcode(), "error mapping network raw log %s: %s", path, aeron_errmsg());
         return -1;
     }
-    _pub->map_raw_log_close_func = context->map_raw_log_close_func;
+    _pub->raw_log_close_func = context->raw_log_close_func;
+    _pub->raw_log_free_func = context->raw_log_free_func;
+    _pub->untethered_subscription_state_change_func = context->untethered_subscription_state_change_func;
 
     strncpy(_pub->log_file_name, path, (size_t)path_length);
     _pub->log_file_name[path_length] = '\0';
@@ -202,10 +203,10 @@ int aeron_network_publication_create(
     _pub->connection_timeout_ns = (int64_t)context->publication_connection_timeout_ns;
     _pub->time_of_last_send_or_heartbeat_ns = now_ns - AERON_NETWORK_PUBLICATION_HEARTBEAT_TIMEOUT_NS - 1;
     _pub->time_of_last_setup_ns = now_ns - AERON_NETWORK_PUBLICATION_SETUP_TIMEOUT_NS - 1;
-    _pub->status_message_deadline_ns = spies_simulate_connection ?
+    _pub->status_message_deadline_ns = params->spies_simulate_connection ?
         now_ns : now_ns + (int64_t)context->publication_connection_timeout_ns;
     _pub->is_exclusive = is_exclusive;
-    _pub->spies_simulate_connection = spies_simulate_connection;
+    _pub->spies_simulate_connection = params->spies_simulate_connection;
     _pub->signal_eos = params->signal_eos;
     _pub->should_send_setup_frame = true;
     _pub->has_receivers = false;
@@ -253,7 +254,7 @@ void aeron_network_publication_close(
         publication->conductor_fields.managed_resource.clientd = NULL;
 
         aeron_retransmit_handler_close(&publication->retransmit_handler);
-        publication->map_raw_log_close_func(&publication->mapped_raw_log, publication->log_file_name);
+        publication->raw_log_close_func(&publication->mapped_raw_log, publication->log_file_name);
         publication->flow_control->fini(publication->flow_control);
         aeron_free(publication->log_file_name);
     }
@@ -444,7 +445,7 @@ int aeron_network_publication_send(aeron_network_publication_t *publication, int
     int64_t snd_pos = aeron_counter_get(publication->snd_pos_position.value_addr);
     int32_t active_term_id = aeron_logbuffer_compute_term_id_from_position(
         snd_pos, publication->position_bits_to_shift, publication->initial_term_id);
-    int32_t term_offset = (int32_t)snd_pos & publication->term_length_mask;
+    int32_t term_offset = (int32_t)(snd_pos & publication->term_length_mask);
 
     if (publication->should_send_setup_frame)
     {
@@ -510,7 +511,7 @@ int aeron_network_publication_resend(void *clientd, int32_t term_id, int32_t ter
     int64_t sender_position = aeron_counter_get(publication->snd_pos_position.value_addr);
     int64_t resend_position = aeron_logbuffer_compute_position(
         term_id, term_offset, publication->position_bits_to_shift, publication->initial_term_id);
-    size_t term_length = (size_t)(publication->term_length_mask + 1L);
+    size_t term_length = (size_t)publication->term_length_mask + 1;
     int64_t bottom_resend_window = sender_position - (term_length / 2);
     int result = 0;
 
@@ -582,7 +583,7 @@ void aeron_network_publication_on_nak(
         term_id,
         term_offset,
         (size_t)length,
-        (size_t)(publication->term_length_mask + 1L),
+        (size_t)publication->term_length_mask + 1,
         aeron_clock_cached_nano_time(publication->cached_clock),
         aeron_network_publication_resend,
         publication);
@@ -789,8 +790,8 @@ void aeron_network_publication_decref(void *clientd)
         const int64_t producer_position = aeron_network_publication_producer_position(publication);
 
         publication->conductor_fields.state = AERON_NETWORK_PUBLICATION_STATE_DRAINING;
-        publication->conductor_fields.time_of_last_activity_ns =
-            aeron_clock_cached_nano_time(publication->cached_clock);
+        publication->conductor_fields.time_of_last_activity_ns = aeron_clock_cached_nano_time(
+            publication->cached_clock);
 
         aeron_counter_set_ordered(publication->pub_lmt_position.value_addr, producer_position);
         AERON_PUT_ORDERED(publication->log_meta_data->end_of_stream_position, producer_position);
@@ -838,7 +839,7 @@ void aeron_network_publication_check_untethered_subscriptions(
 {
     const int64_t sender_position = aeron_counter_get_volatile(publication->snd_pos_position.value_addr);
     int64_t term_window_length = publication->term_window_length;
-    int64_t untethered_window_limit = (sender_position - term_window_length) + (term_window_length / 8);
+    int64_t untethered_window_limit = (sender_position - term_window_length) + (term_window_length / 4);
 
     for (size_t i = 0, length = publication->conductor_fields.subscribable.length; i < length; i++)
     {
@@ -870,16 +871,24 @@ void aeron_network_publication_check_untethered_subscriptions(
                             AERON_IPC_CHANNEL,
                             AERON_IPC_CHANNEL_LEN);
 
-                        tetherable_position->state = AERON_SUBSCRIPTION_TETHER_LINGER;
-                        tetherable_position->time_of_last_update_ns = now_ns;
+                        publication->untethered_subscription_state_change_func(
+                            tetherable_position,
+                            now_ns,
+                            AERON_SUBSCRIPTION_TETHER_LINGER,
+                            publication->stream_id,
+                            publication->session_id);
                     }
                     break;
 
                 case AERON_SUBSCRIPTION_TETHER_LINGER:
                     if (now_ns > (tetherable_position->time_of_last_update_ns + window_limit_timeout_ns))
                     {
-                        tetherable_position->state = AERON_SUBSCRIPTION_TETHER_RESTING;
-                        tetherable_position->time_of_last_update_ns = now_ns;
+                        publication->untethered_subscription_state_change_func(
+                            tetherable_position,
+                            now_ns,
+                            AERON_SUBSCRIPTION_TETHER_RESTING,
+                            publication->stream_id,
+                            publication->session_id);
                     }
                     break;
 
@@ -899,8 +908,13 @@ void aeron_network_publication_check_untethered_subscriptions(
                             tetherable_position->subscription_registration_id,
                             AERON_IPC_CHANNEL,
                             AERON_IPC_CHANNEL_LEN);
-                        tetherable_position->state = AERON_SUBSCRIPTION_TETHER_ACTIVE;
-                        tetherable_position->time_of_last_update_ns = now_ns;
+
+                        publication->untethered_subscription_state_change_func(
+                            tetherable_position,
+                            now_ns,
+                            AERON_SUBSCRIPTION_TETHER_ACTIVE,
+                            publication->stream_id,
+                            publication->session_id);
                     }
                     break;
             }
@@ -911,24 +925,20 @@ void aeron_network_publication_check_untethered_subscriptions(
 void aeron_network_publication_on_time_event(
     aeron_driver_conductor_t *conductor, aeron_network_publication_t *publication, int64_t now_ns, int64_t now_ms)
 {
-    bool has_receivers;
-    AERON_GET_VOLATILE(has_receivers, publication->has_receivers);
-
-    bool current_connected_status =
-        aeron_network_publication_has_required_receivers(publication) ||
-        (publication->spies_simulate_connection && publication->conductor_fields.subscribable.length > 0);
-
-    aeron_network_publication_update_connected_status(publication, current_connected_status);
-
-    int64_t producer_position = aeron_network_publication_producer_position(publication);
-
-    aeron_counter_set_ordered(publication->pub_pos_position.value_addr, producer_position);
-
     switch (publication->conductor_fields.state)
     {
         case AERON_NETWORK_PUBLICATION_STATE_ACTIVE:
         {
             aeron_network_publication_check_untethered_subscriptions(conductor, publication, now_ns);
+
+            const bool current_connected_status =
+                    aeron_network_publication_has_required_receivers(publication) ||
+                    (publication->spies_simulate_connection && publication->conductor_fields.subscribable.length > 0);
+            aeron_network_publication_update_connected_status(publication, current_connected_status);
+
+            const int64_t producer_position = aeron_network_publication_producer_position(publication);
+            aeron_counter_set_ordered(publication->pub_pos_position.value_addr, producer_position);
+
             if (!publication->is_exclusive)
             {
                 aeron_network_publication_check_for_blocked_publisher(
@@ -942,7 +952,10 @@ void aeron_network_publication_on_time_event(
 
         case AERON_NETWORK_PUBLICATION_STATE_DRAINING:
         {
-            int64_t sender_position = aeron_counter_get_volatile(publication->snd_pos_position.value_addr);
+            const int64_t producer_position = aeron_network_publication_producer_position(publication);
+            aeron_counter_set_ordered(publication->pub_pos_position.value_addr, producer_position);
+
+            const int64_t sender_position = aeron_counter_get_volatile(publication->snd_pos_position.value_addr);
 
             if (producer_position > sender_position)
             {
@@ -953,6 +966,8 @@ void aeron_network_publication_on_time_event(
                     break;
                 }
 
+                bool has_receivers;
+                AERON_GET_VOLATILE(has_receivers, publication->has_receivers);
                 if (has_receivers)
                 {
                     break;
@@ -976,12 +991,12 @@ void aeron_network_publication_on_time_event(
             if (now_ns > (publication->conductor_fields.time_of_last_activity_ns + publication->linger_timeout_ns))
             {
                 aeron_driver_conductor_cleanup_network_publication(conductor, publication);
-                publication->conductor_fields.state = AERON_NETWORK_PUBLICATION_STATE_CLOSING;
+                publication->conductor_fields.state = AERON_NETWORK_PUBLICATION_STATE_DONE;
             }
             break;
         }
 
-        case AERON_NETWORK_PUBLICATION_STATE_CLOSING:
+        case AERON_NETWORK_PUBLICATION_STATE_DONE:
             break;
     }
 }
@@ -995,7 +1010,7 @@ extern bool aeron_network_publication_is_possibly_blocked(
 
 extern int64_t aeron_network_publication_producer_position(aeron_network_publication_t *publication);
 
-extern int64_t aeron_network_publication_consumer_position(aeron_network_publication_t *publication);
+extern int64_t aeron_network_publication_join_position(aeron_network_publication_t *publication);
 
 extern void aeron_network_publication_trigger_send_setup_frame(aeron_network_publication_t *publication);
 

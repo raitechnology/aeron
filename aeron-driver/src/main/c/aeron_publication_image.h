@@ -25,8 +25,8 @@
 
 typedef enum aeron_publication_image_state_enum
 {
-    AERON_PUBLICATION_IMAGE_STATE_INACTIVE,
     AERON_PUBLICATION_IMAGE_STATE_ACTIVE,
+    AERON_PUBLICATION_IMAGE_STATE_DRAINING,
     AERON_PUBLICATION_IMAGE_STATE_LINGER,
     AERON_PUBLICATION_IMAGE_STATE_DONE
 }
@@ -37,9 +37,9 @@ typedef struct aeron_publication_image_connection_stct
     struct sockaddr_storage resolved_control_address_for_implicit_unicast_channels;
     aeron_receive_destination_t *destination;  // Not owned.
     struct sockaddr_storage *control_addr;     // Not owned.
+    bool is_eos;
     int64_t time_of_last_activity_ns;
     int64_t time_of_last_frame_ns;
-    bool is_eos;
 }
 aeron_publication_image_connection_t;
 
@@ -96,7 +96,9 @@ typedef struct aeron_publication_image_stct
     int32_t term_length_mask;
     size_t log_file_name_length;
     size_t position_bits_to_shift;
-    aeron_map_raw_log_close_func_t map_raw_log_close_func;
+    aeron_raw_log_close_func_t raw_log_close_func;
+    aeron_raw_log_free_func_t raw_log_free_func;
+    aeron_untethered_subscription_state_change_func_t untethered_subscription_state_change_func;
 
     volatile int64_t begin_loss_change;
     volatile int64_t end_loss_change;
@@ -110,7 +112,7 @@ typedef struct aeron_publication_image_stct
     int32_t next_sm_receiver_window_length;
     int64_t last_status_message_timestamp;
 
-    int64_t last_packet_timestamp_ns;
+    int64_t time_of_last_packet_ns;
 
     int64_t last_sm_change_number;
     int64_t last_sm_position;
@@ -184,9 +186,7 @@ int aeron_publication_image_add_destination(aeron_publication_image_t *image, ae
 int aeron_publication_image_remove_destination(aeron_publication_image_t *image, aeron_udp_channel_t *channel);
 
 void aeron_publication_image_add_connection_if_unknown(
-    aeron_publication_image_t *image,
-    aeron_receive_destination_t *destination,
-    struct sockaddr_storage *src_addr);
+    aeron_publication_image_t *image, aeron_receive_destination_t *destination, struct sockaddr_storage *src_addr);
 
 void aeron_publication_image_on_time_event(
     aeron_driver_conductor_t *conductor, aeron_publication_image_t *image, int64_t now_ns, int64_t now_ms);
@@ -213,7 +213,8 @@ inline bool aeron_publication_image_is_flow_control_under_run(aeron_publication_
     return is_flow_control_under_run;
 }
 
-inline bool aeron_publication_image_is_flow_control_over_run(aeron_publication_image_t *image, int64_t proposed_position)
+inline bool aeron_publication_image_is_flow_control_over_run(
+    aeron_publication_image_t *image, int64_t proposed_position)
 {
     const bool is_flow_control_over_run = proposed_position > image->last_sm_position_window_limit;
 
@@ -231,6 +232,7 @@ inline void aeron_publication_image_schedule_status_message(
     const int64_t change_number = image->begin_sm_change + 1;
 
     AERON_PUT_ORDERED(image->begin_sm_change, change_number);
+    aeron_release();
 
     image->next_sm_position = sm_position;
     image->next_sm_receiver_window_length = window_length;
@@ -286,6 +288,23 @@ inline int64_t aeron_publication_image_registration_id(aeron_publication_image_t
 inline size_t aeron_publication_image_subscriber_count(aeron_publication_image_t *image)
 {
     return image->conductor_fields.subscribable.length;
+}
+
+inline int64_t aeron_publication_image_join_position(aeron_publication_image_t *image)
+{
+    int64_t position = *image->rcv_pos_position.value_addr;
+
+    for (size_t i = 0, length = image->conductor_fields.subscribable.length; i < length; i++)
+    {
+        int64_t sub_pos = aeron_counter_get_volatile(image->conductor_fields.subscribable.array[i].value_addr);
+
+        if (sub_pos < position)
+        {
+            position = sub_pos;
+        }
+    }
+
+    return position;
 }
 
 #endif //AERON_PUBLICATION_IMAGE_H

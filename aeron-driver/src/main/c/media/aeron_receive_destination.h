@@ -17,7 +17,6 @@
 #ifndef AERON_AERON_RECEIVE_DESTINATION_H
 #define AERON_AERON_RECEIVE_DESTINATION_H
 
-#include <stdlib.h>
 #include "media/aeron_udp_channel_transport.h"
 #include "media/aeron_udp_channel.h"
 #include "media/aeron_receive_channel_endpoint.h"
@@ -37,8 +36,9 @@ typedef struct aeron_receive_destination_stct
     aeron_atomic_counter_t local_sockaddr_indicator;
     struct sockaddr_storage current_control_addr;
     size_t so_rcvbuf;
-    int64_t time_of_last_activity_ns;
     bool has_control_addr;
+    int64_t time_of_last_activity_ns;
+    uint8_t padding[AERON_CACHE_LINE_LENGTH];
 }
 aeron_receive_destination_t;
 
@@ -47,6 +47,7 @@ int aeron_receive_destination_create(
     aeron_udp_channel_t *channel,
     aeron_driver_context_t *context,
     aeron_counters_manager_t *counters_manager,
+    int64_t registration_id,
     int32_t channel_status_counter_id);
 
 void aeron_receive_destination_delete(

@@ -15,6 +15,7 @@
  */
 package io.aeron.driver.status;
 
+import io.aeron.AeronCounters;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.status.AtomicCounter;
 import org.agrona.concurrent.status.CountersManager;
@@ -28,7 +29,7 @@ public class PerImageIndicator
     /**
      * Type id of a per Image indicator.
      */
-    public static final int PER_IMAGE_TYPE_ID = 10;
+    public static final int PER_IMAGE_TYPE_ID = AeronCounters.DRIVER_PER_IMAGE_TYPE_ID;
 
     /**
      * Allocate a per {@link io.aeron.driver.PublicationImage} indicator.
@@ -36,7 +37,7 @@ public class PerImageIndicator
      * @param tempBuffer      to be used for labels and key.
      * @param name            of the counter for the label.
      * @param countersManager from which to allocated the underlying storage.
-     * @param registrationId  to be associated with the counter.
+     * @param registrationId  associated with the counter.
      * @param sessionId       for the stream of messages.
      * @param streamId        for the stream of messages.
      * @param channel         for the stream of messages.
@@ -52,7 +53,14 @@ public class PerImageIndicator
         final String channel)
     {
         final int counterId = StreamCounter.allocateCounterId(
-            tempBuffer, name, PER_IMAGE_TYPE_ID, countersManager, registrationId, sessionId, streamId, channel);
+            tempBuffer,
+            name,
+            PER_IMAGE_TYPE_ID,
+            countersManager,
+            registrationId,
+            sessionId,
+            streamId,
+            channel);
 
         return new AtomicCounter(countersManager.valuesBuffer(), counterId, countersManager);
     }

@@ -19,21 +19,23 @@
 #include <cstdint>
 #include <string>
 #include <stdexcept>
-#include "MacroUtil.h"
+#include <functional>
+
+#include "util/MacroUtil.h"
 
 namespace aeron { namespace util
 {
 
 #ifdef _MSC_VER
-#define AERON_PATH_SEP '\\'
+#define AERON_FILE_SEP '\\'
 #else
-#define AERON_PATH_SEP '/'
+#define AERON_FILE_SEP '/'
 #endif
 
-static constexpr const char* past_prefix(const char * const prefix, const char * const filename)
+static constexpr const char *past_prefix(const char * const prefix, const char * const filename)
 {
     return *prefix == *filename ?
-        past_prefix(prefix + 1, filename + 1) : *filename == AERON_PATH_SEP ? filename + 1 : filename;
+        past_prefix(prefix + 1, filename + 1) : (*filename == AERON_FILE_SEP ? filename + 1 : filename);
 }
 
 #ifdef __PROJECT_SOURCE_DIR__
@@ -47,6 +49,15 @@ static constexpr const char* past_prefix(const char * const prefix, const char *
 #else
     #define SOURCEINFO  __PRETTY_FUNCTION__,  __SHORT_FILE__, __LINE__
 #endif
+
+/**
+ * Callback to indicate an exception has occurred.
+ *
+ * This handler may be called in a context of noexcept so the handler can not safely throw.
+ *
+ * @param exception that has occurred.
+ */
+typedef std::function<void(const std::exception &exception)> exception_handler_t;
 
 enum class ExceptionCategory : std::int64_t
 {
@@ -80,12 +91,12 @@ public:
     {
     }
 
-    virtual const char * what() const noexcept
+    virtual const char *what() const noexcept
     {
         return m_what.c_str();
     }
 
-    const char * where() const noexcept
+    const char *where() const noexcept
     {
         return m_where.c_str();
     }
@@ -96,7 +107,7 @@ public:
     }
 };
 
-#define AERON_DECLARE_SOURCED_EXCEPTION(exceptionName,category) \
+#define AERON_DECLARE_SOURCED_EXCEPTION(exceptionName, category) \
 class exceptionName : public aeron::util::SourcedException     \
 {                                                              \
 public:                                                        \

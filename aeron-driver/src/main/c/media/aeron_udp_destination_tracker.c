@@ -19,7 +19,7 @@
 #define _GNU_SOURCE
 #endif
 
-#include <uri/aeron_uri.h>
+#include "uri/aeron_uri.h"
 #include "protocol/aeron_udp_protocol.h"
 #include "util/aeron_netutil.h"
 #include "util/aeron_arrayutil.h"
@@ -276,7 +276,7 @@ int aeron_udp_destination_tracker_address_compare(struct sockaddr_storage *lhs, 
 {
     if (lhs->ss_family == rhs->ss_family)
     {
-        size_t len = (AF_INET == lhs->ss_family) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+        size_t len = AF_INET == lhs->ss_family ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 
         return memcmp(lhs, rhs, len);
     }

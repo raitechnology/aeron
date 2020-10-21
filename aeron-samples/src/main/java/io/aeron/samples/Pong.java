@@ -90,10 +90,10 @@ public class Pong
             System.out.println("Shutting down...");
         }
 
-        CloseHelper.quietClose(driver);
+        CloseHelper.close(driver);
     }
 
-    public static void pingHandler(
+    private static void pingHandler(
         final BufferClaim bufferClaim,
         final Publication pongPublication,
         final DirectBuffer buffer,

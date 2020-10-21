@@ -18,7 +18,6 @@
 #define AERON_FRAGMENT_ASSEMBLER_H
 
 #include <unordered_map>
-#include "Aeron.h"
 #include "BufferBuilder.h"
 
 namespace aeron
@@ -50,7 +49,7 @@ public:
      * @param initialBufferLength to be used for each session.
      */
     explicit FragmentAssembler(
-        const fragment_handler_t &delegate, size_t initialBufferLength = DEFAULT_FRAGMENT_ASSEMBLY_BUFFER_LENGTH) :
+        const fragment_handler_t &delegate, std::size_t initialBufferLength = DEFAULT_FRAGMENT_ASSEMBLY_BUFFER_LENGTH) :
         m_initialBufferLength(initialBufferLength), m_delegate(delegate)
     {
     }

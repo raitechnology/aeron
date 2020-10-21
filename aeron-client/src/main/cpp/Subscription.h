@@ -18,13 +18,10 @@
 #define AERON_SUBSCRIPTION_H
 
 #include <cstdint>
-#include <iostream>
-#include <atomic>
 #include <memory>
 #include <iterator>
-#include "concurrent/logbuffer/TermReader.h"
-#include "concurrent/status/StatusIndicatorReader.h"
 #include "concurrent/AtomicArrayUpdater.h"
+#include "concurrent/status/StatusIndicatorReader.h"
 #include "Image.h"
 #include "util/Export.h"
 
@@ -132,10 +129,38 @@ public:
     std::vector<std::string> localSocketAddresses() const;
 
     /**
+     * Resolve channel endpoint and replace it with the port from the ephemeral range when 0 was provided. If there are
+     * no addresses, or if there is more than one, returned from {@link #localSocketAddresses()} then the original
+     * {@link #channel()} is returned.
+     * <p>
+     * If the channel is not {@link aeron::concurrent::status::ChannelEndpointStatus::CHANNEL_ENDPOINT_ACTIVE}, then an
+     * empty string will be returned.
+     *
+     * @return channel URI string with an endpoint being resolved to the allocated port.
+     * @see #channelStatus()
+     * @see #localSocketAddresses()
+     */
+    std::string tryResolveChannelEndpointPort() const;
+
+    /**
+     * Find the resolved endpoint for the channel. This may be null of MDS is used and no destination is yet added.
+     * The result will similar to taking the first element returned from {@link #localSocketAddresses()}. If more than
+     * one destination is added then the first found is returned.
+     * <p>
+     * If the channel is not {@link aeron::concurrent::status::ChannelEndpointStatus::CHANNEL_ENDPOINT_ACTIVE}, then an
+     * empty string will be returned.
+     *
+     * @return The resolved endpoint or an empty string if not found.
+     * @see #channelStatus()
+     * @see #localSocketAddresses()
+     */
+    std::string resolvedEndpoint() const;
+
+    /**
      * Add a destination manually to a multi-destination Subscription.
      *
      * @param endpointChannel for the destination to add.
-     * @return correlation id for the add command
+     * @return correlation id for the add command.
      */
     std::int64_t addDestination(const std::string &endpointChannel);
 
@@ -143,7 +168,7 @@ public:
      * Remove a previously added destination from a multi-destination Subscription.
      *
      * @param endpointChannel for the destination to remove.
-     * @return correlation id for the remove command
+     * @return correlation id for the remove command.
      */
     std::int64_t removeDestination(const std::string &endpointChannel);
 
@@ -163,7 +188,7 @@ public:
      * @see Subscription::removeDestination
      *
      * @param correlationId of the add/remove command returned by Subscription::addDestination
-     * or Subscription::removeDestination
+     * or Subscription::removeDestination.
      * @return true for added or false if not.
      */
     bool findDestinationResponse(std::int64_t correlationId);
@@ -176,7 +201,7 @@ public:
      *
      * @param fragmentHandler callback for handling each message fragment as it is read.
      * @param fragmentLimit   number of message fragments to limit for the poll across multiple Image s.
-     * @return the number of fragments received
+     * @return the number of fragments received.
      *
      * @see fragment_handler_t
      */
@@ -219,7 +244,7 @@ public:
      *
      * @param fragmentHandler callback for handling each message fragment as it is read.
      * @param fragmentLimit   number of message fragments to limit for the poll operation across multiple Image s.
-     * @return the number of fragments received
+     * @return the number of fragments received.
      * @see controlled_poll_fragment_handler_t
      */
     template<typename F>
@@ -329,7 +354,7 @@ public:
             }
         }
 
-        return index != -1 ? imageArray[index] : std::shared_ptr<Image>();
+        return -1 != index ? imageArray[index] : std::shared_ptr<Image>();
     }
 
     /**
@@ -338,10 +363,10 @@ public:
      * This method returns a share_ptr to the underlying Image and must be released before the Image may be fully
      * reclaimed.
      *
-     * @param index in the array
+     * @param index in the array.
      * @return image at given index or exception if out of range.
      */
-    inline std::shared_ptr<Image> imageByIndex(size_t index) const
+    inline std::shared_ptr<Image> imageByIndex(std::size_t index) const
     {
         return m_imageArray.load().first[index];
     }
@@ -352,11 +377,11 @@ public:
      * This is only valid until the image becomes unavailable. This is only provided for backwards compatibility and
      * usage should be replaced with Subscription::imageByIndex instead so that the Image is retained easier.
      *
-     * @param index in the array
+     * @param index in the array.
      * @return image at given index or exception if out of range.
      * @deprecated use Subscription::imageByIndex instead.
      */
-    inline Image &imageAtIndex(size_t index) const
+    inline Image &imageAtIndex(std::size_t index) const
     {
         return *m_imageArray.load().first[index];
     }
@@ -389,7 +414,7 @@ public:
      *
      * THis method will create a new std::vector<std::shared_ptr<Image>> populated with the underlying {@link Image}s.
      *
-     * @return a std::vector of active std::shared_ptr of {@link Image}s that match this subscription
+     * @return a std::vector of active std::shared_ptr of {@link Image}s that match this subscription.
      */
     inline std::shared_ptr<std::vector<std::shared_ptr<Image>>> copyOfImageList() const
     {
@@ -411,7 +436,7 @@ public:
     /**
      * Iterate over Image list and call passed in function.
      *
-     * @return length of Image list
+     * @return length of Image list.
      */
     template<typename F>
     inline int forEachImage(F &&func) const
@@ -500,13 +525,13 @@ private:
     ClientConductor &m_conductor;
     const std::string m_channel;
     std::int32_t m_channelStatusId;
-    char m_paddingBefore[util::BitUtil::CACHE_LINE_LENGTH]{};
-    std::size_t m_roundRobinIndex = 0;
-    AtomicArrayUpdater<std::shared_ptr<Image>> m_imageArray;
-    std::atomic<bool> m_isClosed;
-    char m_paddingAfter[util::BitUtil::CACHE_LINE_LENGTH]{};
-    std::int64_t m_registrationId;
     std::int32_t m_streamId;
+    std::int64_t m_registrationId;
+    char m_paddingBefore[util::BitUtil::CACHE_LINE_LENGTH] = {};
+    std::size_t m_roundRobinIndex = 0;
+    AtomicArrayUpdater<std::shared_ptr<Image>> m_imageArray = {};
+    std::atomic<bool> m_isClosed = { false };
+    char m_paddingAfter[util::BitUtil::CACHE_LINE_LENGTH] = {};
 };
 
 }

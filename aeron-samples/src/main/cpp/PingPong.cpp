@@ -19,8 +19,6 @@
 #include <thread>
 #include <csignal>
 
-#define __STDC_FORMAT_MACROS
-
 extern "C"
 {
 #include <hdr_histogram.h>
@@ -38,7 +36,7 @@ using namespace aeron;
 
 std::atomic<bool> running(true);
 
-void sigIntHandler(int param)
+void sigIntHandler(int)
 {
     running = false;
 }
@@ -56,13 +54,13 @@ static const char optWarmupMessages = 'w';
 
 struct Settings
 {
-    std::string dirPrefix = "";
+    std::string dirPrefix;
     std::string pingChannel = samples::configuration::DEFAULT_PING_CHANNEL;
     std::string pongChannel = samples::configuration::DEFAULT_PONG_CHANNEL;
     std::int32_t pingStreamId = samples::configuration::DEFAULT_PING_STREAM_ID;
     std::int32_t pongStreamId = samples::configuration::DEFAULT_PONG_STREAM_ID;
-    long numberOfWarmupMessages = samples::configuration::DEFAULT_NUMBER_OF_WARM_UP_MESSAGES;
-    long numberOfMessages = samples::configuration::DEFAULT_NUMBER_OF_MESSAGES;
+    long long numberOfWarmupMessages = samples::configuration::DEFAULT_NUMBER_OF_WARM_UP_MESSAGES;
+    long long numberOfMessages = samples::configuration::DEFAULT_NUMBER_OF_MESSAGES;
     int messageLength = samples::configuration::DEFAULT_MESSAGE_LENGTH;
     int fragmentCountLimit = samples::configuration::DEFAULT_FRAGMENT_COUNT_LIMIT;
 };
@@ -83,10 +81,10 @@ Settings parseCmdLine(CommandOptionParser &cp, int argc, char **argv)
     s.pongChannel = cp.getOption(optPongChannel).getParam(0, s.pongChannel);
     s.pingStreamId = cp.getOption(optPingStreamId).getParamAsInt(0, 1, INT32_MAX, s.pingStreamId);
     s.pongStreamId = cp.getOption(optPongStreamId).getParamAsInt(0, 1, INT32_MAX, s.pongStreamId);
-    s.numberOfMessages = cp.getOption(optMessages).getParamAsLong(0, 0, LONG_MAX, s.numberOfMessages);
+    s.numberOfMessages = cp.getOption(optMessages).getParamAsLong(0, 0, INT64_MAX, s.numberOfMessages);
     s.messageLength = cp.getOption(optLength).getParamAsInt(0, sizeof(std::int64_t), INT32_MAX, s.messageLength);
     s.fragmentCountLimit = cp.getOption(optFrags).getParamAsInt(0, 1, INT32_MAX, s.fragmentCountLimit);
-    s.numberOfWarmupMessages = cp.getOption(optWarmupMessages).getParamAsLong(0, 0, LONG_MAX, s.numberOfWarmupMessages);
+    s.numberOfWarmupMessages = cp.getOption(optWarmupMessages).getParamAsLong(0, 0, INT64_MAX, s.numberOfWarmupMessages);
 
     return s;
 }
@@ -109,7 +107,7 @@ void sendPingAndReceivePong(
     std::shared_ptr<Image> imageSharedPtr = subscription.imageByIndex(0);
     Image &image = *imageSharedPtr;
 
-    for (long i = 0; i < settings.numberOfMessages; i++)
+    for (std::int64_t i = 0; i < settings.numberOfMessages; i++)
     {
         std::int64_t position;
 
@@ -117,19 +115,15 @@ void sendPingAndReceivePong(
         {
             // timestamps in the message are relative to this app, so just send the timestamp directly.
             steady_clock::time_point start = steady_clock::now();
-
             srcBuffer.putBytes(0, (std::uint8_t *)&start, sizeof(steady_clock::time_point));
         }
         while ((position = publication.offer(srcBuffer, 0, settings.messageLength)) < 0L);
 
-        do
+        while (image.position() < position)
         {
-            while (image.poll(fragmentHandler, settings.fragmentCountLimit) <= 0)
-            {
-                idleStrategy.idle();
-            }
+            int fragments = image.poll(fragmentHandler, settings.fragmentCountLimit);
+            idleStrategy.idle(fragments);
         }
-        while (image.position() < position);
     }
 }
 
@@ -292,8 +286,10 @@ int main(int argc, char **argv)
                       << toStringWithCommas(warmupSettings.messageLength) << std::endl;
 
             sendPingAndReceivePong(
-                [](AtomicBuffer &, index_t, index_t, Header &)
-                {}, *pingPublication, *pongSubscription, warmupSettings);
+                [](AtomicBuffer &, index_t, index_t, Header &){},
+                *pingPublication,
+                *pongSubscription,
+                warmupSettings);
 
             std::int64_t nanoDuration = duration<std::int64_t, std::nano>(steady_clock::now() - start).count();
 
@@ -332,7 +328,7 @@ int main(int argc, char **argv)
 
             double runDuration = duration<double>(endRun - startRun).count();
             std::cout << "Throughput of "
-                      << toStringWithCommas(settings.numberOfMessages / runDuration)
+                      << toStringWithCommas((double)settings.numberOfMessages / runDuration)
                       << " RTTs/sec" << std::endl;
         }
         while (running && continuationBarrier("Execute again?"));
