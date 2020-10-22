@@ -133,8 +133,9 @@ all_dirs    := $(bind) $(libd) $(objd) $(dependd)
 
 client_collections_dir   := aeron-client/src/main/c/collections
 client_collections_files := \
-  aeron_bit_set aeron_int64_counter_map aeron_int64_to_ptr_hash_map \
-  aeron_int64_to_tagged_ptr_hash_map aeron_map aeron_str_to_ptr_hash_map
+  aeron_array_to_ptr_hash_map aeron_bit_set aeron_int64_counter_map \
+  aeron_int64_to_ptr_hash_map aeron_int64_to_tagged_ptr_hash_map aeron_map \
+  aeron_str_to_ptr_hash_map
 
 all_dirs += $(objd)/$(client_collections_dir) $(dependd)/$(client_collections_dir)
 
