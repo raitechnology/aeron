@@ -128,9 +128,7 @@ public class ClusterBackupTest
             cluster.awaitServicesMessageCount(messageCount);
 
             cluster.takeSnapshot(leader);
-            cluster.awaitSnapshotCount(cluster.node(0), 1);
-            cluster.awaitSnapshotCount(cluster.node(1), 1);
-            cluster.awaitSnapshotCount(cluster.node(2), 1);
+            cluster.awaitSnapshotCount(1);
 
             final long logPosition = leader.service().cluster().logPosition();
 
@@ -169,9 +167,7 @@ public class ClusterBackupTest
 
             cluster.shutdownCluster(leader);
 
-            cluster.awaitNodeTermination(cluster.node(0));
-            cluster.awaitNodeTermination(cluster.node(1));
-            cluster.awaitNodeTermination(cluster.node(2));
+            cluster.awaitNodeTerminations();
 
             assertTrue(cluster.node(0).service().wasSnapshotTaken());
             assertTrue(cluster.node(1).service().wasSnapshotTaken());
@@ -206,9 +202,7 @@ public class ClusterBackupTest
             cluster.awaitServicesMessageCount(preSnapshotMessageCount);
 
             cluster.takeSnapshot(leader);
-            cluster.awaitSnapshotCount(cluster.node(0), 1);
-            cluster.awaitSnapshotCount(cluster.node(1), 1);
-            cluster.awaitSnapshotCount(cluster.node(2), 1);
+            cluster.awaitSnapshotCount(1);
 
             cluster.sendMessages(postSnapshotMessageCount);
             cluster.awaitResponseMessageCount(totalMessageCount);
@@ -249,9 +243,7 @@ public class ClusterBackupTest
             cluster.awaitServicesMessageCount(preSnapshotMessageCount);
 
             cluster.takeSnapshot(leader);
-            cluster.awaitSnapshotCount(cluster.node(0), 1);
-            cluster.awaitSnapshotCount(cluster.node(1), 1);
-            cluster.awaitSnapshotCount(cluster.node(2), 1);
+            cluster.awaitSnapshotCount(1);
 
             cluster.startClusterBackupNode(true);
 

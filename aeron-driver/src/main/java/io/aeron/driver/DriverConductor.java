@@ -58,7 +58,7 @@ import static org.agrona.collections.ArrayListUtil.fastUnorderedRemove;
 /**
  * Driver Conductor that takes commands from publishers and subscribers and orchestrates the media driver.
  */
-public class DriverConductor implements Agent
+public final class DriverConductor implements Agent
 {
     private static final long CLOCK_UPDATE_DURATION_NS = TimeUnit.MILLISECONDS.toNanos(1);
 
@@ -1738,31 +1738,19 @@ public class DriverConductor implements Agent
         final ArrayList<PublicationImage> publicationImages = this.publicationImages;
         for (int i = 0, size = publicationImages.size(); i < size; i++)
         {
-            final PublicationImage image = publicationImages.get(i);
-            if (image.isRebuilding())
-            {
-                image.trackRebuild(nowNs, statusMessageTimeoutNs);
-            }
+            workCount += publicationImages.get(i).trackRebuild(nowNs, statusMessageTimeoutNs);
         }
 
         final ArrayList<NetworkPublication> networkPublications = this.networkPublications;
         for (int i = 0, size = networkPublications.size(); i < size; i++)
         {
-            final NetworkPublication publication = networkPublications.get(i);
-            if (publication.state() == NetworkPublication.State.ACTIVE)
-            {
-                workCount += publication.updatePublisherLimit();
-            }
+            workCount += networkPublications.get(i).updatePublisherLimit();
         }
 
         final ArrayList<IpcPublication> ipcPublications = this.ipcPublications;
         for (int i = 0, size = ipcPublications.size(); i < size; i++)
         {
-            final IpcPublication publication = ipcPublications.get(i);
-            if (publication.state() == IpcPublication.State.ACTIVE)
-            {
-                workCount += publication.updatePublisherLimit();
-            }
+            workCount += ipcPublications.get(i).updatePublisherLimit();
         }
 
         return workCount;

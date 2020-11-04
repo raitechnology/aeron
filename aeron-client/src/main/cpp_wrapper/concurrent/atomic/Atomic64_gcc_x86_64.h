@@ -33,7 +33,12 @@ inline void fence()
 
 inline void acquire()
 {
+#if (!defined(__clang__) && defined(__GNUC__) && __GNUC__ < 8)
+    volatile std::int64_t *dummy;
+    asm volatile("movq 0(%%rsp), %0" : "=r" (dummy) :: "memory");
+#else
     std::atomic_thread_fence(std::memory_order_acquire);
+#endif
 }
 
 inline void release()
@@ -109,8 +114,8 @@ inline void putValueVolatile(volatile T *address, T value)
 {
     static_assert(sizeof(T) <= 8, "Requires size <= 8 bytes");
 
-    thread_fence();
-    *reinterpret_cast<volatile std::int64_t *>(address) = value;
+    release();
+    *reinterpret_cast<volatile T *>(address) = value;
     fence();
 }
 

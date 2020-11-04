@@ -962,14 +962,13 @@ void ClientConductor::onUnavailableImage(std::int64_t correlationId, std::int64_
         {
             std::pair<Image::array_t, std::size_t> result = subscription->removeImage(correlationId);
             Image::array_t oldImageArray = result.first;
-            const std::size_t index = result.second;
 
             if (nullptr != oldImageArray)
             {
                 lingerResource(m_epochClock(), oldImageArray);
 
                 CallbackGuard callbackGuard(m_isInCallback);
-                entry.m_onUnavailableImageHandler(*oldImageArray[index]);
+                entry.m_onUnavailableImageHandler(*(oldImageArray[result.second]));
             }
         }
     }
@@ -988,7 +987,7 @@ void ClientConductor::onClientTimeout(std::int64_t clientId)
 
 void ClientConductor::closeAllResources(long long nowMs)
 {
-    std::atomic_store_explicit(&m_isClosed, true, std::memory_order_release);
+    m_isClosed.store(true, std::memory_order_release);
 
     for (auto &kv : m_publicationByRegistrationId)
     {

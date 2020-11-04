@@ -40,8 +40,6 @@ import java.util.ArrayList;
 
 import static io.aeron.driver.LossDetector.lossFound;
 import static io.aeron.driver.LossDetector.rebuildOffset;
-import static io.aeron.driver.PublicationImage.State.ACTIVE;
-import static io.aeron.driver.PublicationImage.State.INIT;
 import static io.aeron.driver.status.SystemCounterDescriptor.*;
 import static io.aeron.logbuffer.LogBufferDescriptor.*;
 import static io.aeron.logbuffer.TermGapFiller.tryFillGap;
@@ -148,7 +146,7 @@ public class PublicationImage
     private final boolean isReliable;
 
     private boolean isRebuilding = true;
-    private volatile State state = INIT;
+    private volatile State state = State.INIT;
 
     private final NanoClock nanoClock;
     private final CachedNanoClock cachedNanoClock;
@@ -169,7 +167,7 @@ public class PublicationImage
     private final CachedEpochClock cachedEpochClock;
     private final RawLog rawLog;
 
-    public PublicationImage(
+    PublicationImage(
         final long correlationId,
         final MediaDriver.Context ctx,
         final ReceiveChannelEndpoint channelEndpoint,
@@ -431,7 +429,8 @@ public class PublicationImage
      */
     void activate()
     {
-        state(ACTIVE);
+        timeOfLastStateChangeNs = cachedNanoClock.nanoTime();
+        this.state = State.ACTIVE;
     }
 
     /**
@@ -443,7 +442,8 @@ public class PublicationImage
         if (State.ACTIVE == state)
         {
             isRebuilding = false;
-            state(State.DRAINING);
+            timeOfLastStateChangeNs = cachedNanoClock.nanoTime();
+            this.state = State.DRAINING;
         }
     }
 
@@ -474,74 +474,64 @@ public class PublicationImage
         trackConnection(transportIndex, remoteAddress, cachedNanoClock.nanoTime());
     }
 
-    /**
-     * Called from the {@link DriverConductor} to track the rebuild os stream which is used for loss detection
-     * and congestion control.
-     *
-     * @param nowNs                  current time.
-     * @param statusMessageTimeoutNs for sending of Status Messages.
-     */
-    final void trackRebuild(final long nowNs, final long statusMessageTimeoutNs)
+    final int trackRebuild(final long nowNs, final long statusMessageTimeoutNs)
     {
-        final long hwmPosition = this.hwmPosition.getVolatile();
-        long minSubscriberPosition = Long.MAX_VALUE;
-        long maxSubscriberPosition = 0;
+        int workCount = 0;
 
-        for (final ReadablePosition subscriberPosition : subscriberPositions)
+        if (isRebuilding)
         {
-            final long position = subscriberPosition.getVolatile();
-            minSubscriberPosition = Math.min(minSubscriberPosition, position);
-            maxSubscriberPosition = Math.max(maxSubscriberPosition, position);
+            final long hwmPosition = this.hwmPosition.getVolatile();
+            long minSubscriberPosition = Long.MAX_VALUE;
+            long maxSubscriberPosition = 0;
+
+            for (final ReadablePosition subscriberPosition : subscriberPositions)
+            {
+                final long position = subscriberPosition.getVolatile();
+                minSubscriberPosition = Math.min(minSubscriberPosition, position);
+                maxSubscriberPosition = Math.max(maxSubscriberPosition, position);
+            }
+
+            final long rebuildPosition = Math.max(this.rebuildPosition.get(), maxSubscriberPosition);
+            final long scanOutcome = lossDetector.scan(
+                termBuffers[indexByPosition(rebuildPosition, positionBitsToShift)],
+                rebuildPosition,
+                hwmPosition,
+                nowNs,
+                termLengthMask,
+                positionBitsToShift,
+                initialTermId);
+
+            final int rebuildTermOffset = (int)rebuildPosition & termLengthMask;
+            final long newRebuildPosition = (rebuildPosition - rebuildTermOffset) + rebuildOffset(scanOutcome);
+            this.rebuildPosition.proposeMaxOrdered(newRebuildPosition);
+
+            final long ccOutcome = congestionControl.onTrackRebuild(
+                nowNs,
+                minSubscriberPosition,
+                nextSmPosition,
+                hwmPosition,
+                rebuildPosition,
+                newRebuildPosition,
+                lossFound(scanOutcome));
+
+            final int windowLength = CongestionControl.receiverWindowLength(ccOutcome);
+            final int threshold = CongestionControl.threshold(windowLength);
+
+            if (CongestionControl.shouldForceStatusMessage(ccOutcome) ||
+                ((timeOfLastStatusMessageScheduleNs + statusMessageTimeoutNs) - nowNs < 0) ||
+                (minSubscriberPosition > (nextSmPosition + threshold)))
+            {
+                cleanBufferTo(minSubscriberPosition - (termLengthMask + 1));
+                scheduleStatusMessage(nowNs, minSubscriberPosition, windowLength);
+                workCount += 1;
+            }
         }
 
-        final long rebuildPosition = Math.max(this.rebuildPosition.get(), maxSubscriberPosition);
-
-        final long scanOutcome = lossDetector.scan(
-            termBuffers[indexByPosition(rebuildPosition, positionBitsToShift)],
-            rebuildPosition,
-            hwmPosition,
-            nowNs,
-            termLengthMask,
-            positionBitsToShift,
-            initialTermId);
-
-        final int rebuildTermOffset = (int)rebuildPosition & termLengthMask;
-        final long newRebuildPosition = (rebuildPosition - rebuildTermOffset) + rebuildOffset(scanOutcome);
-        this.rebuildPosition.proposeMaxOrdered(newRebuildPosition);
-
-        final long ccOutcome = congestionControl.onTrackRebuild(
-            nowNs,
-            minSubscriberPosition,
-            nextSmPosition,
-            hwmPosition,
-            rebuildPosition,
-            newRebuildPosition,
-            lossFound(scanOutcome));
-
-        final int windowLength = CongestionControl.receiverWindowLength(ccOutcome);
-        final int threshold = CongestionControl.threshold(windowLength);
-
-        if (CongestionControl.shouldForceStatusMessage(ccOutcome) ||
-            ((timeOfLastStatusMessageScheduleNs + statusMessageTimeoutNs) - nowNs < 0) ||
-            (minSubscriberPosition > (nextSmPosition + threshold)))
-        {
-            cleanBufferTo(minSubscriberPosition - (termLengthMask + 1));
-            scheduleStatusMessage(nowNs, minSubscriberPosition, windowLength);
-        }
+        return workCount;
     }
 
     /**
-     * Is this image actively rebuilding and thus should be checked for loss.
-     *
-     * @return true if this image actively rebuilding and thus should be checked for loss.
-     */
-    final boolean isRebuilding()
-    {
-        return isRebuilding;
-    }
-
-    /**
-     * Insert frame into term buffer.
+     * Insert frame into term buffer from the {@link Receiver}.
      *
      * @param termId         for the data packet to insert into the appropriate term.
      * @param termOffset     for the start of the packet in the term.
@@ -625,37 +615,33 @@ public class PublicationImage
     int sendPendingStatusMessage()
     {
         int workCount = 0;
+        final long changeNumber = endSmChange;
 
-        if (ACTIVE == state)
+        if (changeNumber != lastSmChangeNumber)
         {
-            final long changeNumber = endSmChange;
+            final long smPosition = nextSmPosition;
+            final int receiverWindowLength = nextSmReceiverWindowLength;
 
-            if (changeNumber != lastSmChangeNumber)
+            UNSAFE.loadFence();
+
+            if (changeNumber == beginSmChange)
             {
-                final long smPosition = nextSmPosition;
-                final int receiverWindowLength = nextSmReceiverWindowLength;
+                final int termId = computeTermIdFromPosition(smPosition, positionBitsToShift, initialTermId);
+                final int termOffset = (int)smPosition & termLengthMask;
 
-                UNSAFE.loadFence();
+                channelEndpoint.sendStatusMessage(
+                    imageConnections, sessionId, streamId, termId, termOffset, receiverWindowLength, (byte)0);
 
-                if (changeNumber == beginSmChange)
-                {
-                    final int termId = computeTermIdFromPosition(smPosition, positionBitsToShift, initialTermId);
-                    final int termOffset = (int)smPosition & termLengthMask;
+                statusMessagesSent.incrementOrdered();
 
-                    channelEndpoint.sendStatusMessage(
-                        imageConnections, sessionId, streamId, termId, termOffset, receiverWindowLength, (byte)0);
+                lastSmPosition = smPosition;
+                lastSmWindowLimit = smPosition + receiverWindowLength;
+                lastSmChangeNumber = changeNumber;
 
-                    statusMessagesSent.incrementOrdered();
-
-                    lastSmPosition = smPosition;
-                    lastSmWindowLimit = smPosition + receiverWindowLength;
-                    lastSmChangeNumber = changeNumber;
-
-                    updateActiveTransportCount();
-                }
-
-                workCount = 1;
+                updateActiveTransportCount();
             }
+
+            workCount = 1;
         }
 
         return workCount;
@@ -750,7 +736,7 @@ public class PublicationImage
      */
     boolean isAcceptingSubscriptions()
     {
-        return subscriberPositions.length > 0 && (state == ACTIVE || state == INIT);
+        return subscriberPositions.length > 0 && (state == State.ACTIVE || state == State.INIT);
     }
 
     long joinPosition()
@@ -788,8 +774,9 @@ public class PublicationImage
             case LINGER:
                 if (hasNoSubscribers() || ((timeOfLastStateChangeNs + imageLivenessTimeoutNs) - timeNs < 0))
                 {
-                    state = State.DONE;
                     conductor.cleanupImage(this);
+                    timeOfLastStateChangeNs = timeNs;
+                    state = State.DONE;
                 }
                 break;
         }
@@ -899,12 +886,6 @@ public class PublicationImage
         return true;
     }
 
-    private void state(final State state)
-    {
-        timeOfLastStateChangeNs = cachedNanoClock.nanoTime();
-        this.state = state;
-    }
-
     private void scheduleStatusMessage(final long nowNs, final long smPosition, final int receiverWindowLength)
     {
         final long changeNumber = beginSmChange + 1;
@@ -993,13 +974,10 @@ public class PublicationImage
             }
         }
 
-        if (!rawLog.isInactive())
+        final UnsafeBuffer metaDataBuffer = rawLog.metaData();
+        if (!rawLog.isInactive() && metaDataBuffer.getInt(LOG_ACTIVE_TRANSPORT_COUNT) != activeTransportCount)
         {
-            final UnsafeBuffer metaDataBuffer = rawLog.metaData();
-            if (metaDataBuffer.getInt(LOG_ACTIVE_TRANSPORT_COUNT) != activeTransportCount)
-            {
-                LogBufferDescriptor.activeTransportCount(metaDataBuffer, activeTransportCount);
-            }
+            LogBufferDescriptor.activeTransportCount(metaDataBuffer, activeTransportCount);
         }
     }
 

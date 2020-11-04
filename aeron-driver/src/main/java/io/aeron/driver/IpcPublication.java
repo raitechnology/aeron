@@ -118,49 +118,39 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
         timeOfLastConsumerPositionUpdateNs = ctx.cachedNanoClock().nanoTime();
     }
 
-    public int sessionId()
+    int sessionId()
     {
         return sessionId;
     }
 
-    public int streamId()
+    int streamId()
     {
         return streamId;
     }
 
-    public long registrationId()
+    long registrationId()
     {
         return registrationId;
     }
 
-    public long tag()
+    long tag()
     {
         return tag;
     }
 
-    public boolean isExclusive()
+    boolean isExclusive()
     {
         return isExclusive;
     }
 
-    public RawLog rawLog()
+    RawLog rawLog()
     {
         return rawLog;
     }
 
-    public int publisherLimitId()
+    int publisherLimitId()
     {
         return publisherLimit.id();
-    }
-
-    public int termBufferLength()
-    {
-        return termBufferLength;
-    }
-
-    public int mtuLength()
-    {
-        return LogBufferDescriptor.mtuLength(metaDataBuffer);
     }
 
     public boolean free()
@@ -267,12 +257,12 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
         return reachedEndOfLife;
     }
 
-    public void incRef()
+    void incRef()
     {
         ++refCount;
     }
 
-    public void decRef()
+    void decRef()
     {
         if (0 == --refCount)
         {
@@ -286,38 +276,42 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
     int updatePublisherLimit()
     {
         int workCount = 0;
-        long minSubscriberPosition = Long.MAX_VALUE;
-        long maxSubscriberPosition = consumerPosition;
 
-        for (final ReadablePosition subscriberPosition : subscriberPositions)
+        if (State.ACTIVE == state)
         {
-            final long position = subscriberPosition.getVolatile();
-            minSubscriberPosition = Math.min(minSubscriberPosition, position);
-            maxSubscriberPosition = Math.max(maxSubscriberPosition, position);
-        }
+            long minSubscriberPosition = Long.MAX_VALUE;
+            long maxSubscriberPosition = consumerPosition;
 
-        if (subscriberPositions.length > 0)
-        {
-            if (maxSubscriberPosition > consumerPosition)
+            for (final ReadablePosition subscriberPosition : subscriberPositions)
             {
-                consumerPosition = maxSubscriberPosition;
+                final long position = subscriberPosition.getVolatile();
+                minSubscriberPosition = Math.min(minSubscriberPosition, position);
+                maxSubscriberPosition = Math.max(maxSubscriberPosition, position);
             }
 
-            final long proposedLimit = minSubscriberPosition + termWindowLength;
-            if (proposedLimit > tripLimit)
+            if (subscriberPositions.length > 0)
             {
-                cleanBufferTo(minSubscriberPosition);
-                publisherLimit.setOrdered(proposedLimit);
-                tripLimit = proposedLimit + tripGain;
+                if (maxSubscriberPosition > consumerPosition)
+                {
+                    consumerPosition = maxSubscriberPosition;
+                }
 
-                workCount = 1;
+                final long proposedLimit = minSubscriberPosition + termWindowLength;
+                if (proposedLimit > tripLimit)
+                {
+                    cleanBufferTo(minSubscriberPosition);
+                    publisherLimit.setOrdered(proposedLimit);
+                    tripLimit = proposedLimit + tripGain;
+
+                    workCount = 1;
+                }
             }
-        }
-        else if (publisherLimit.get() > consumerPosition)
-        {
-            tripLimit = consumerPosition;
-            publisherLimit.setOrdered(consumerPosition);
-            cleanBufferTo(consumerPosition);
+            else if (publisherLimit.get() > consumerPosition)
+            {
+                tripLimit = consumerPosition;
+                publisherLimit.setOrdered(consumerPosition);
+                cleanBufferTo(consumerPosition);
+            }
         }
 
         return workCount;
