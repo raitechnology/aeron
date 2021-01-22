@@ -100,7 +100,8 @@ rpath         = $(rpath1)
 includes     += -I/usr/include/hdrhist
 endif
 
-cppincludes := -Iaeron-client/src/main/cpp $(includes)
+cppincludes      := -Iaeron-client/src/main/cpp $(includes)
+wrap_cppincludes := -Iaeron-client/src/main/cpp_wrapper $(includes)
 
 # before include, that has srpm target
 .PHONY: everything
@@ -156,6 +157,16 @@ client_protocol_files := aeron_udp_protocol
 
 all_dirs += $(objd)/$(client_protocol_dir) $(dependd)/$(client_protocol_dir)
 
+client_reports_dir   := aeron-client/src/main/c/reports
+client_reports_files := aeron_loss_reporter
+
+all_dirs += $(objd)/$(client_reports_dir) $(dependd)/$(client_reports_dir)
+
+client_status_dir   := aeron-client/src/main/c/status
+client_status_files := aeron_local_sockaddr
+
+all_dirs += $(objd)/$(client_status_dir) $(dependd)/$(client_status_dir)
+
 client_util_dir   := aeron-client/src/main/c/util
 client_util_files :=  \
   aeron_arrayutil aeron_bitutil aeron_clock aeron_dlopen aeron_env \
@@ -164,12 +175,17 @@ client_util_files :=  \
 
 all_dirs += $(objd)/$(client_util_dir) $(dependd)/$(client_util_dir)
 
+client_uri_dir   := aeron-client/src/main/c/uri
+client_uri_files := aeron_uri
+
+all_dirs += $(objd)/$(client_uri_dir) $(dependd)/$(client_uri_dir)
+
 aeron_version_defines = -DAERON_VERSION_MAJOR=$(major_num) -DAERON_VERSION_MINOR=$(minor_num) -DAERON_VERSION_PATCH=$(patch_num) -DAERON_VERSION_TXT=\"$(version)\"
 
 client_dir   := aeron-client/src/main/c
 client_files := \
   aeron_agent aeron_alloc aeron_client aeron_client_conductor \
-  aeron_cnc_file_descriptor aeron_context aeron_counter \
+  aeron_cnc aeron_cnc_file_descriptor aeron_context aeron_counter \
   aeron_exclusive_publication aeron_fragment_assembler aeron_image \
   aeron_log_buffer aeron_publication aeron_socket aeron_subscription \
   aeron_version aeron_windows aeronc
@@ -180,13 +196,19 @@ libaeron_static_objs = \
   $(addprefix $(objd)/$(client_collections_dir)/, $(addsuffix .o, $(notdir $(client_collections_files)))) \
   $(addprefix $(objd)/$(client_concurrent_dir)/, $(addsuffix .o, $(notdir $(client_concurrent_files)))) \
   $(addprefix $(objd)/$(client_protocol_dir)/, $(addsuffix .o, $(notdir $(client_protocol_files)))) \
+  $(addprefix $(objd)/$(client_reports_dir)/, $(addsuffix .o, $(notdir $(client_reports_files)))) \
+  $(addprefix $(objd)/$(client_status_dir)/, $(addsuffix .o, $(notdir $(client_status_files)))) \
   $(addprefix $(objd)/$(client_util_dir)/, $(addsuffix .o, $(notdir $(client_util_files)))) \
+  $(addprefix $(objd)/$(client_uri_dir)/, $(addsuffix .o, $(notdir $(client_uri_files)))) \
   $(addprefix $(objd)/$(client_dir)/, $(addsuffix .o, $(notdir $(client_files))))
 libaeron_static_deps = \
   $(addprefix $(dependd)/$(client_collections_dir)/, $(addsuffix .d, $(notdir $(client_collections_files)))) \
   $(addprefix $(dependd)/$(client_concurrent_dir)/, $(addsuffix .d, $(notdir $(client_concurrent_files)))) \
   $(addprefix $(dependd)/$(client_protocol_dir)/, $(addsuffix .d, $(notdir $(client_protocol_files)))) \
+  $(addprefix $(dependd)/$(client_reports_dir)/, $(addsuffix .d, $(notdir $(client_reports_files)))) \
+  $(addprefix $(dependd)/$(client_status_dir)/, $(addsuffix .d, $(notdir $(client_status_files)))) \
   $(addprefix $(dependd)/$(client_util_dir)/, $(addsuffix .d, $(notdir $(client_util_files)))) \
+  $(addprefix $(dependd)/$(client_uri_dir)/, $(addsuffix .d, $(notdir $(client_uri_files)))) \
   $(addprefix $(dependd)/$(client_dir)/, $(addsuffix .d, $(notdir $(client_files))))
 
 $(libd)/libaeron_static.a: $(libaeron_static_objs)
@@ -198,13 +220,19 @@ libaeron_dbjs = \
   $(addprefix $(objd)/$(client_collections_dir)/, $(addsuffix .fpic.o, $(notdir $(client_collections_files)))) \
   $(addprefix $(objd)/$(client_concurrent_dir)/, $(addsuffix .fpic.o, $(notdir $(client_concurrent_files)))) \
   $(addprefix $(objd)/$(client_protocol_dir)/, $(addsuffix .fpic.o, $(notdir $(client_protocol_files)))) \
+  $(addprefix $(objd)/$(client_reports_dir)/, $(addsuffix .fpic.o, $(notdir $(client_reports_files)))) \
+  $(addprefix $(objd)/$(client_status_dir)/, $(addsuffix .fpic.o, $(notdir $(client_status_files)))) \
   $(addprefix $(objd)/$(client_util_dir)/, $(addsuffix .fpic.o, $(notdir $(client_util_files)))) \
+  $(addprefix $(objd)/$(client_uri_dir)/, $(addsuffix .fpic.o, $(notdir $(client_uri_files)))) \
   $(addprefix $(objd)/$(client_dir)/, $(addsuffix .fpic.o, $(notdir $(client_files))))
 libaeron_deps = \
   $(addprefix $(dependd)/$(client_collections_dir)/, $(addsuffix .fpic.d, $(notdir $(client_collections_files)))) \
   $(addprefix $(dependd)/$(client_concurrent_dir)/, $(addsuffix .fpic.d, $(notdir $(client_concurrent_files)))) \
   $(addprefix $(dependd)/$(client_protocol_dir)/, $(addsuffix .fpic.d, $(notdir $(client_protocol_files)))) \
+  $(addprefix $(dependd)/$(client_reports_dir)/, $(addsuffix .fpic.d, $(notdir $(client_reports_files)))) \
+  $(addprefix $(dependd)/$(client_status_dir)/, $(addsuffix .fpic.d, $(notdir $(client_status_files)))) \
   $(addprefix $(dependd)/$(client_util_dir)/, $(addsuffix .fpic.d, $(notdir $(client_util_files)))) \
+  $(addprefix $(dependd)/$(client_uri_dir)/, $(addsuffix .fpic.d, $(notdir $(client_uri_files)))) \
   $(addprefix $(dependd)/$(client_dir)/, $(addsuffix .fpic.d, $(notdir $(client_files))))
 libaeron_dlnk  := $(dlnk_lib)
 libaeron_spec  := $(version)-$(build_num)
@@ -235,13 +263,8 @@ driver_media_files := \
 
 all_dirs += $(objd)/$(driver_media_dir) $(dependd)/$(driver_media_dir)
 
-driver_reports_dir   := aeron-driver/src/main/c/reports
-driver_reports_files := aeron_loss_reporter
-
-all_dirs += $(objd)/$(driver_reports_dir) $(dependd)/$(driver_reports_dir)
-
 driver_uri_dir   := aeron-driver/src/main/c/uri
-driver_uri_files := aeron_uri
+driver_uri_files := aeron_driver_uri
 
 all_dirs += $(objd)/$(driver_uri_dir) $(dependd)/$(driver_uri_dir)
 
@@ -265,14 +288,12 @@ libaeron_driver_static_objs = \
   $(addprefix $(objd)/$(driver_agent_dir)/, $(addsuffix .o, $(notdir $(driver_agent_files)))) \
   $(addprefix $(objd)/$(driver_concurrent_dir)/, $(addsuffix .o, $(notdir $(driver_concurrent_files)))) \
   $(addprefix $(objd)/$(driver_media_dir)/, $(addsuffix .o, $(notdir $(driver_media_files)))) \
-  $(addprefix $(objd)/$(driver_reports_dir)/, $(addsuffix .o, $(notdir $(driver_reports_files)))) \
   $(addprefix $(objd)/$(driver_uri_dir)/, $(addsuffix .o, $(notdir $(driver_uri_files)))) \
   $(addprefix $(objd)/$(driver_dir)/, $(addsuffix .o, $(notdir $(driver_files))))
 libaeron_driver_static_deps = \
   $(addprefix $(dependd)/$(driver_agent_dir)/, $(addsuffix .d, $(notdir $(driver_agent_files)))) \
   $(addprefix $(dependd)/$(driver_concurrent_dir)/, $(addsuffix .d, $(notdir $(driver_concurrent_files)))) \
   $(addprefix $(dependd)/$(driver_media_dir)/, $(addsuffix .d, $(notdir $(driver_media_files)))) \
-  $(addprefix $(dependd)/$(driver_reports_dir)/, $(addsuffix .d, $(notdir $(driver_reports_files)))) \
   $(addprefix $(dependd)/$(driver_uri_dir)/, $(addsuffix .d, $(notdir $(driver_uri_files)))) \
   $(addprefix $(dependd)/$(driver_dir)/, $(addsuffix .d, $(notdir $(driver_files))))
 
@@ -286,14 +307,12 @@ libaeron_driver_dbjs = \
   $(addprefix $(objd)/$(driver_agent_dir)/, $(addsuffix .fpic.o, $(notdir $(driver_agent_files)))) \
   $(addprefix $(objd)/$(driver_concurrent_dir)/, $(addsuffix .fpic.o, $(notdir $(driver_concurrent_files)))) \
   $(addprefix $(objd)/$(driver_media_dir)/, $(addsuffix .fpic.o, $(notdir $(driver_media_files)))) \
-  $(addprefix $(objd)/$(driver_reports_dir)/, $(addsuffix .fpic.o, $(notdir $(driver_reports_files)))) \
   $(addprefix $(objd)/$(driver_uri_dir)/, $(addsuffix .fpic.o, $(notdir $(driver_uri_files)))) \
   $(addprefix $(objd)/$(driver_dir)/, $(addsuffix .fpic.o, $(notdir $(driver_files))))
 libaeron_driver_deps = \
   $(addprefix $(dependd)/$(driver_agent_dir)/, $(addsuffix .fpic.d, $(notdir $(driver_agent_files)))) \
   $(addprefix $(dependd)/$(driver_concurrent_dir)/, $(addsuffix .fpic.d, $(notdir $(driver_concurrent_files)))) \
   $(addprefix $(dependd)/$(driver_media_dir)/, $(addsuffix .fpic.d, $(notdir $(driver_media_files)))) \
-  $(addprefix $(dependd)/$(driver_reports_dir)/, $(addsuffix .fpic.d, $(notdir $(driver_reports_files)))) \
   $(addprefix $(dependd)/$(driver_uri_dir)/, $(addsuffix .fpic.d, $(notdir $(driver_uri_files)))) \
   $(addprefix $(dependd)/$(driver_dir)/, $(addsuffix .fpic.d, $(notdir $(driver_files))))
 libaeron_driver_dlnk = $(dlnk_lib)
@@ -406,64 +425,71 @@ all_depends += $(addprefix $(dependd)/$(samples_dir)/, $(addsuffix .d, $(notdir 
 
 samplescpp_dir = aeron-samples/src/main/cpp
 samplescpp_files = \
-  AeronStat BasicPublisher BasicSubscriber DriverTool ErrorStat \
-  ExclusiveThroughput LossStat Ping PingPong Pong RateSubscriber \
-  StreamingPublisher Throughput
+  BasicPublisher BasicSubscriber StreamingPublisher RateSubscriber \
+  Pong Ping Throughput ExclusiveThroughput PingPong
 
 all_dirs += $(objd)/$(samplescpp_dir) $(dependd)/$(samplescpp_dir)
 all_depends += $(addprefix $(dependd)/$(samplescpp_dir)/, $(addsuffix .d, $(notdir $(samplescpp_files))))
-
-AeronStat_lnk  = -laeron_client_shared
-AeronStat_objs = $(objd)/$(samplescpp_dir)/AeronStat.o
-$(bind)/AeronStat: $(AeronStat_objs) $(libd)/libaeron_client_shared.so
 
 BasicPublisher_lnk  = -laeron_client_shared
 BasicPublisher_objs = $(objd)/$(samplescpp_dir)/BasicPublisher.o
 $(bind)/BasicPublisher: $(BasicPublisher_objs) $(libd)/libaeron_client_shared.so
 
+BasicPublisherW_lnk  = -laeron
+BasicPublisherW_objs = $(objd)/$(samplescpp_dir)/BasicPublisher.owrap
+$(bind)/BasicPublisherW: $(BasicPublisherW_objs) $(libd)/libaeron.so
+
 BasicSubscriber_lnk  = -laeron_client_shared
 BasicSubscriber_objs = $(objd)/$(samplescpp_dir)/BasicSubscriber.o
 $(bind)/BasicSubscriber: $(BasicSubscriber_objs) $(libd)/libaeron_client_shared.so
 
-DriverTool_lnk  = -laeron_client_shared
-DriverTool_objs = $(objd)/$(samplescpp_dir)/DriverTool.o
-$(bind)/DriverTool: $(DriverTool_objs) $(libd)/libaeron_client_shared.so
-
-ErrorStat_lnk  = -laeron_client_shared
-ErrorStat_objs = $(objd)/$(samplescpp_dir)/ErrorStat.o
-$(bind)/ErrorStat: $(ErrorStat_objs) $(libd)/libaeron_client_shared.so
-
-ExclusiveThroughput_lnk  = -laeron_client_shared
-ExclusiveThroughput_objs = $(objd)/$(samplescpp_dir)/ExclusiveThroughput.o
-$(bind)/ExclusiveThroughput: $(ExclusiveThroughput_objs) $(libd)/libaeron_client_shared.so
-
-LossStat_lnk  = -laeron_client_shared
-LossStat_objs = $(objd)/$(samplescpp_dir)/LossStat.o
-$(bind)/LossStat: $(LossStat_objs) $(libd)/libaeron_client_shared.so
-
-Ping_lnk = -laeron_client_shared $(dlnk_hdr_lib)
-Ping_objs = $(objd)/$(samplescpp_dir)/Ping.o
-$(bind)/Ping: $(Ping_objs) $(libd)/libaeron_client_shared.so $(dlnk_hdr_dep)
-
-PingPong_lnk  = -laeron_client_shared $(dlnk_hdr_lib)
-PingPong_objs = $(objd)/$(samplescpp_dir)/PingPong.o
-$(bind)/PingPong: $(PingPong_objs) $(libd)/libaeron_client_shared.so $(dlnk_hdr_dep)
-
-Pong_lnk = -laeron_client_shared
-Pong_objs = $(objd)/$(samplescpp_dir)/Pong.o
-$(bind)/Pong: $(Pong_objs) $(libd)/libaeron_client_shared.so
-
-RateSubscriber_lnk = -laeron_client_shared
-RateSubscriber_objs = $(objd)/$(samplescpp_dir)/RateSubscriber.o
-$(bind)/RateSubscriber: $(RateSubscriber_objs) $(libd)/libaeron_client_shared.so
+BasicSubscriberW_lnk  = -laeron
+BasicSubscriberW_objs = $(objd)/$(samplescpp_dir)/BasicSubscriber.owrap
+$(bind)/BasicSubscriberW: $(BasicSubscriberW_objs) $(libd)/libaeron.so
 
 StreamingPublisher_lnk = -laeron_client_shared
 StreamingPublisher_objs = $(objd)/$(samplescpp_dir)/StreamingPublisher.o
 $(bind)/StreamingPublisher: $(StreamingPublisher_objs) $(libd)/libaeron_client_shared.so
 
-Throughput_lnk = -laeron_client_shared
+StreamingPublisherW_lnk = -laeron
+StreamingPublisherW_objs = $(objd)/$(samplescpp_dir)/StreamingPublisher.owrap
+$(bind)/StreamingPublisherW: $(StreamingPublisherW_objs) $(libd)/libaeron.so
+
+RateSubscriber_lnk = -laeron_client_shared
+RateSubscriber_objs = $(objd)/$(samplescpp_dir)/RateSubscriber.o
+$(bind)/RateSubscriber: $(RateSubscriber_objs) $(libd)/libaeron_client_shared.so
+
+RateSubscriberW_lnk = -laeron
+RateSubscriberW_objs = $(objd)/$(samplescpp_dir)/RateSubscriber.owrap
+$(bind)/RateSubscriberW: $(RateSubscriberW_objs) $(libd)/libaeron.so
+
+Ping_lnk = -laeron_client_shared $(dlnk_hdr_lib)
+Ping_objs = $(objd)/$(samplescpp_dir)/Ping.o
+$(bind)/Ping: $(Ping_objs) $(libd)/libaeron_client_shared.so $(dlnk_hdr_dep)
+
+PingW_lnk = -laeron $(dlnk_hdr_lib)
+PingW_objs = $(objd)/$(samplescpp_dir)/Ping.owrap
+$(bind)/PingW: $(PingW_objs) $(libd)/libaeron.so $(dlnk_hdr_dep)
+
+Pong_lnk = -laeron_client_shared
+Pong_objs = $(objd)/$(samplescpp_dir)/Pong.o
+$(bind)/Pong: $(Pong_objs) $(libd)/libaeron_client_shared.so
+
+PongW_lnk = -laeron
+PongW_objs = $(objd)/$(samplescpp_dir)/Pong.owrap
+$(bind)/PongW: $(PongW_objs) $(libd)/libaeron.so
+
+Throughput_lnk  = -laeron_client_shared
 Throughput_objs = $(objd)/$(samplescpp_dir)/Throughput.o
 $(bind)/Throughput: $(Throughput_objs) $(libd)/libaeron_client_shared.so
+
+ExclusiveThroughput_lnk  = -laeron_client_shared
+ExclusiveThroughput_objs = $(objd)/$(samplescpp_dir)/ExclusiveThroughput.o
+$(bind)/ExclusiveThroughput: $(ExclusiveThroughput_objs) $(libd)/libaeron_client_shared.so
+
+PingPong_lnk  = -laeron_client_shared $(dlnk_hdr_lib)
+PingPong_objs = $(objd)/$(samplescpp_dir)/PingPong.o
+$(bind)/PingPong: $(PingPong_objs) $(libd)/libaeron_client_shared.so $(dlnk_hdr_dep)
 
 samplesrawcpp_dir   := aeron-samples/src/main/cpp/raw
 samplesrawcpp_files := TimeTests
@@ -474,11 +500,14 @@ all_depends += $(addprefix $(dependd)/$(samplesrawcpp_dir)/, $(addsuffix .d, $(n
 TimeTests_objs = $(objd)/$(samplesrawcpp_dir)/TimeTests.o
 $(bind)/TimeTests: $(TimeTests_objs)
 
-cpp_exes += $(bind)/AeronStat $(bind)/BasicPublisher $(bind)/BasicSubscriber
-cpp_exes += $(bind)/DriverTool $(bind)/ErrorStat $(bind)/ExclusiveThroughput
-cpp_exes += $(bind)/LossStat $(bind)/PingPong $(bind)/Ping $(bind)/Pong
-cpp_exes += $(bind)/RateSubscriber $(bind)/StreamingPublisher
-cpp_exes += $(bind)/Throughput $(bind)/TimeTests
+cpp_exes += $(bind)/BasicPublisher $(bind)/BasicSubscriber
+cpp_exes += $(bind)/BasicPublisherW $(bind)/BasicSubscriberW
+cpp_exes += $(bind)/StreamingPublisher $(bind)/RateSubscriber
+cpp_exes += $(bind)/StreamingPublisherW $(bind)/RateSubscriberW
+cpp_exes += $(bind)/Pong $(bind)/Ping $(bind)/Throughput
+cpp_exes += $(bind)/PongW $(bind)/PingW
+cpp_exes += $(bind)/ExclusiveThroughput $(bind)/PingPong
+cpp_exes += $(bind)/TimeTests
 all_exes += $(cpp_exes)
 
 # the default targets
@@ -580,6 +609,9 @@ install: all
 
 $(objd)/%.o: %.cpp
 	$(cpp) $(cflags) $(cppflags) $(cppincludes) $(cppdefines) $($(notdir $*)_includes) $($(notdir $*)_defines) -c $< -o $@
+
+$(objd)/%.owrap: %.cpp
+	$(cpp) $(cflags) $(cppflags) $(wrap_cppincludes) $(cppdefines) $($(notdir $*)_includes) $($(notdir $*)_defines) -c $< -o $@
 
 $(objd)/%.o: %.c
 	$(cc) $(cflags) $(includes) $(defines) $($(notdir $*)_includes) $($(notdir $*)_defines) -c $< -o $@
