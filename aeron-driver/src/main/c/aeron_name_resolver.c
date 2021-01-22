@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,11 +26,8 @@
 #include "util/aeron_parse_util.h"
 #include "util/aeron_netutil.h"
 #include "util/aeron_dlopen.h"
+#include "util/aeron_strutil.h"
 #include "aeron_name_resolver.h"
-
-#ifdef _MSC_VER
-#define strdup _strdup
-#endif
 
 static void aeron_name_resolver_set_err(
     aeron_name_resolver_t *resolver,

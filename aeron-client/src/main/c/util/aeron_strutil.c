@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@
 #include <inttypes.h>
 #include <errno.h>
 #include <string.h>
+#include <locale.h>
+#include <stdlib.h>
 
 #define AERON_DLL_EXPORTS
 
@@ -48,6 +50,48 @@ void aeron_format_date(char *str, size_t count, int64_t timestamp)
     snprintf(str, count, "%s%s%s", time_buffer, msec_buffer, tz_buffer);
 }
 
+static size_t aeron_format_min(size_t a, size_t b)
+{
+    return a < b ? a : b;
+}
+
+static size_t aeron_format_number_next(long long value, const char *sep, char *buffer, size_t buffer_len)
+{
+    if (0 <= value && value < 1000)
+    {
+        return snprintf(buffer, aeron_format_min(4, buffer_len), "%lld", value);
+    }
+    else if (-1000 < value && value < 0)
+    {
+        return snprintf(buffer, aeron_format_min(5, buffer_len), "%lld", value);
+    }
+    else
+    {
+        size_t printed_len = aeron_format_number_next(value / 1000, sep, buffer, buffer_len);
+        return printed_len + snprintf(
+            buffer + printed_len, aeron_format_min(5, buffer_len - printed_len), "%s%03lld", sep, llabs(value % 1000));
+    }
+}
+
+/**
+ * Uses locale specific thousands separator to format the number, or "," if none found. Will truncate to buffer_len - 1
+ * and null terminate. Use AERON_FORMAT_NUMBER_TO_LOCALE_STR_LEN for the buffer size to prevent truncations. Works for
+ * string lengths up to INT64_MIN.
+ *
+ * @param value Value for format
+ * @param buffer buffer to use
+ * @param buffer_len length of buffer
+ * @return NULL terminated buffer containing formatted string.
+ */
+char *aeron_format_number_to_locale(long long value, char *buffer, size_t buffer_len)
+{
+    setlocale(LC_NUMERIC, "");
+    const char *sep = 1 == strlen(localeconv()->thousands_sep) ? localeconv()->thousands_sep : ",";
+    aeron_format_number_next(value, sep, buffer, buffer_len);
+    buffer[buffer_len - 1] = '\0';
+    return buffer;
+}
+
 void aeron_format_to_hex(char *str, size_t str_length, uint8_t *data, size_t data_len)
 {
     static char table[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
@@ -66,7 +110,7 @@ void aeron_format_to_hex(char *str, size_t str_length, uint8_t *data, size_t dat
     str[j] = '\0';
 }
 
-int aeron_tokenise(char *input, const char delimiter, const int max_tokens, char **tokens)
+int aeron_tokenise(char *input, char delimiter, int max_tokens, char **tokens)
 {
     if (NULL == input)
     {
@@ -123,55 +167,99 @@ int aeron_tokenise(char *input, const char delimiter, const int max_tokens, char
 
 #if defined(_MSC_VER) && !defined(AERON_NO_GETOPT)
 
-/* Taken from https://github.com/iotivity/iotivity/blob/master/resource/c_common/windows/src/getopt.c */
-/* *****************************************************************
-*
-* Copyright 2016 Microsoft
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*      https://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*
-******************************************************************/
+// Taken and modified from https://www.codeproject.com/KB/cpp/xgetopt/XGetopt_demo.zip
+// *****************************************************************
+//
+// Author:  Hans Dietrich
+//          hdietrich2@hotmail.com
+//
+// This software is released into the public domain.
+// You are free to use it in any way you like.
+//
+// This software is provided "as is" with no expressed
+// or implied warranty.  I accept no liability for any
+// damage or loss of business that this software may cause.
+//
+// ******************************************************************
+
 AERON_EXPORT char *optarg = NULL;
 AERON_EXPORT int optind = 1;
 
-int getopt(int argc, char *const argv[], const char *optstring)
+int getopt(int argc, char *const argv[], const char *opt_string)
 {
-    if ((optind >= argc) || (argv[optind][0] != '-') || (argv[optind][0] == 0))
+    static char *next = NULL;
+    if (optind == 0)
     {
-        return -1;
+        next = NULL;
     }
 
-    int opt = argv[optind][1];
-    const char *p = strchr(optstring, opt);
+    optarg = NULL;
 
-    if (p == NULL)
+    if (next == NULL || *next == '\0')
+    {
+        if (optind == 0)
+        {
+            optind++;
+        }
+
+        if (optind >= argc || argv[optind][0] != '-' || argv[optind][1] == '\0')
+        {
+            optarg = NULL;
+            if (optind < argc)
+            {
+                optarg = argv[optind];
+            }
+
+            return EOF;
+        }
+
+        if (strcmp(argv[optind], "--") == 0)
+        {
+            optind++;
+            optarg = NULL;
+            if (optind < argc)
+            {
+                optarg = argv[optind];
+            }
+
+            return EOF;
+        }
+
+        next = argv[optind];
+        next++;
+        optind++;
+    }
+
+    char c = *next++;
+    char *cp = strchr(opt_string, c);
+
+    if (cp == NULL || c == ':')
     {
         return '?';
     }
 
-    if (p[1] == ':')
+    cp++;
+    if (*cp == ':')
     {
-        optind++;
-        if (optind >= argc)
+        if (*next != '\0')
+        {
+            optarg = next;
+            next = NULL;
+        }
+        else if (optind < argc)
+        {
+            optarg = argv[optind];
+            optind++;
+        }
+        else
         {
             return '?';
         }
-        optarg = argv[optind];
-        optind++;
     }
 
-    return opt;
+    return c;
 }
+
 #endif
 
 extern uint64_t aeron_fnv_64a_buf(uint8_t *buf, size_t len);

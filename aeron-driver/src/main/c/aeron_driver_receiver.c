@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -91,6 +91,8 @@ int aeron_driver_receiver_init(
         system_counters, AERON_SYSTEM_COUNTER_RECEIVER_PROXY_FAILS);
     receiver->receiver_proxy.threading_mode = context->threading_mode;
     receiver->receiver_proxy.receiver = receiver;
+    receiver->receiver_proxy.on_add_endpoint_func = context->receiver_proxy_on_add_endpoint_func;
+    receiver->receiver_proxy.on_remove_endpoint_func = context->receiver_proxy_on_remove_endpoint_func;
 
     receiver->errors_counter = aeron_system_counter_addr(system_counters, AERON_SYSTEM_COUNTER_ERRORS);
     receiver->invalid_frames_counter = aeron_system_counter_addr(system_counters, AERON_SYSTEM_COUNTER_INVALID_PACKETS);
@@ -268,6 +270,7 @@ void aeron_driver_receiver_on_add_endpoint(void *clientd, void *command)
     if (aeron_receive_channel_endpoint_add_poll_transports(endpoint, &receiver->poller) < 0)
     {
         AERON_DRIVER_RECEIVER_ERROR(receiver, "receiver on_add_endpoint: %s", aeron_errmsg());
+        return;
     }
 
     aeron_receive_channel_endpoint_add_pending_setup(endpoint, receiver);
@@ -378,10 +381,7 @@ void aeron_driver_receiver_on_add_destination(void *clientd, void *item)
     if (endpoint->transport_bindings->poller_add_func(&receiver->poller, &destination->transport) < 0)
     {
         AERON_DRIVER_RECEIVER_ERROR(receiver, "on_add_destination, add to poller: %s", aeron_errmsg());
-
-        // Clean up earlier steps...
         aeron_receive_channel_endpoint_remove_destination(endpoint, destination->conductor_fields.udp_channel, NULL);
-
         return;
     }
 
@@ -390,12 +390,9 @@ void aeron_driver_receiver_on_add_destination(void *clientd, void *item)
         if (aeron_receive_channel_endpoint_add_pending_setup_destination(endpoint, receiver, destination) < 0)
         {
             AERON_DRIVER_RECEIVER_ERROR(receiver, "on_add_destination, pending_setup: %s", aeron_errmsg());
-
-            // Clean up earlier steps...
             aeron_receive_channel_endpoint_remove_destination(endpoint, destination->conductor_fields.udp_channel, NULL);
             endpoint->transport_bindings->poller_remove_func(&receiver->poller, &destination->transport);
             endpoint->transport_bindings->close_func(&destination->transport);
-
             return;
         }
     }
@@ -457,12 +454,14 @@ void aeron_driver_receiver_on_add_publication_image(void *clientd, void *item)
     int ensure_capacity_result = 0;
     AERON_ARRAY_ENSURE_CAPACITY(ensure_capacity_result, receiver->images, aeron_driver_receiver_image_entry_t);
 
-    if (aeron_receive_channel_endpoint_on_add_publication_image(endpoint, cmd->image) < 0 || ensure_capacity_result < 0)
+    if (ensure_capacity_result < 0 || aeron_receive_channel_endpoint_on_add_publication_image(endpoint, cmd->image) < 0)
     {
         AERON_DRIVER_RECEIVER_ERROR(receiver, "receiver on_add_publication_image: %s", aeron_errmsg());
     }
-
-    receiver->images.array[receiver->images.length++].image = cmd->image;
+    else
+    {
+        receiver->images.array[receiver->images.length++].image = cmd->image;
+    }
 }
 
 void aeron_driver_receiver_on_remove_publication_image(void *clientd, void *item)
@@ -506,8 +505,6 @@ void aeron_driver_receiver_on_resolution_change(void *clientd, void *item)
     aeron_command_receiver_resolution_change_t *cmd = item;
     aeron_receive_channel_endpoint_t *endpoint = cmd->endpoint;
     aeron_receive_destination_t *destination = cmd->destination;
-
-    // MDS is not supported in the C driver yet, would need to look up transport index here.
 
     for (size_t i = 0; i < receiver->pending_setups.length; i++)
     {

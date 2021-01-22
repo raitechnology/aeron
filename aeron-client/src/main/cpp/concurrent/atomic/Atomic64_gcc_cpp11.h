@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,22 +82,7 @@ inline std::int64_t getInt64Volatile(volatile std::int64_t *source)
     return sequence;
 }
 
-template<typename T>
-inline volatile T *getValueVolatile(volatile T **source)
-{
-    volatile T *t = *reinterpret_cast<volatile T **>(source);
-    acquire();
-
-    return t;
-}
-
 inline void putInt64Volatile(volatile std::int64_t *address, std::int64_t value)
-{
-    __atomic_store(address, &value, __ATOMIC_SEQ_CST);
-}
-
-template<typename T>
-inline void putValueVolatile(volatile T *address, T value)
 {
     __atomic_store(address, &value, __ATOMIC_SEQ_CST);
 }
@@ -106,13 +91,6 @@ inline void putInt64Ordered(volatile std::int64_t *address, std::int64_t value)
 {
     release();
     *reinterpret_cast<volatile std::int64_t *>(address) = value;
-}
-
-template<typename T>
-inline void putValueOrdered(volatile T **address, volatile T *value)
-{
-    release();
-    *reinterpret_cast<volatile T **>(address) = value;
 }
 
 inline void putInt64Atomic(volatile std::int64_t *address, std::int64_t value)

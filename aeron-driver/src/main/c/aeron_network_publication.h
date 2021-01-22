@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 
 #include "util/aeron_bitutil.h"
 #include "util/aeron_fileutil.h"
-#include "uri/aeron_uri.h"
+#include "uri/aeron_driver_uri.h"
 #include "aeron_driver_common.h"
 #include "aeron_driver_context.h"
 #include "concurrent/aeron_counters_manager.h"
@@ -78,7 +78,7 @@ typedef struct aeron_network_publication_stct
     int64_t linger_timeout_ns;
     int64_t unblock_timeout_ns;
     int64_t connection_timeout_ns;
-    int64_t time_of_last_send_or_heartbeat_ns;
+    int64_t time_of_last_data_or_heartbeat_ns;
     int64_t time_of_last_setup_ns;
     int64_t status_message_deadline_ns;
     int64_t tag;
@@ -92,7 +92,8 @@ typedef struct aeron_network_publication_stct
     bool is_exclusive;
     bool spies_simulate_connection;
     bool signal_eos;
-    bool should_send_setup_frame;
+    bool is_setup_elicited;
+    bool has_initial_connection;
     bool has_receivers;
     bool has_spies;
     bool is_connected;
@@ -125,7 +126,7 @@ int aeron_network_publication_create(
     aeron_position_t *snd_lmt_position,
     aeron_atomic_counter_t *snd_bpe_counter,
     aeron_flow_control_strategy_t *flow_control_strategy,
-    aeron_uri_publication_params_t *params,
+    aeron_driver_uri_publication_params_t *params,
     bool is_exclusive,
     aeron_system_counters_t *system_counters);
 
@@ -224,7 +225,7 @@ inline void aeron_network_publication_trigger_send_setup_frame(aeron_network_pub
 
     if (!is_end_of_stream)
     {
-        publication->should_send_setup_frame = true;
+        publication->is_setup_elicited = true;
     }
 }
 
@@ -259,6 +260,15 @@ inline int64_t aeron_network_publication_max_spy_position(aeron_network_publicat
 inline size_t aeron_network_publication_num_spy_subscribers(aeron_network_publication_t *publication)
 {
     return publication->conductor_fields.subscribable.length;
+}
+
+inline bool aeron_network_publication_is_accepting_subscriptions(aeron_network_publication_t *publication)
+{
+    return AERON_NETWORK_PUBLICATION_STATE_ACTIVE == publication->conductor_fields.state ||
+        (AERON_NETWORK_PUBLICATION_STATE_DRAINING == publication->conductor_fields.state &&
+            publication->conductor_fields.subscribable.length > 0 &&
+            aeron_network_publication_producer_position(publication) >
+                aeron_counter_get_volatile(publication->snd_pos_position.value_addr));
 }
 
 #endif //AERON_NETWORK_PUBLICATION_H

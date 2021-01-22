@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@ package io.aeron;
 
 import io.aeron.driver.MediaDriver;
 import io.aeron.logbuffer.LogBufferDescriptor;
-import io.aeron.test.MediaDriverTestWatcher;
-import io.aeron.test.TestMediaDriver;
 import io.aeron.test.Tests;
+import io.aeron.test.driver.MediaDriverTestWatcher;
+import io.aeron.test.driver.TestMediaDriver;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -47,7 +47,8 @@ public class TermBufferLengthTest
             .publicationTermBufferLength(TEST_TERM_LENGTH * 2)
             .ipcTermBufferLength(TEST_TERM_LENGTH * 2);
 
-        try (TestMediaDriver ignore = TestMediaDriver.launch(ctx, testWatcher);
+        try (
+            TestMediaDriver ignore = TestMediaDriver.launch(ctx, testWatcher);
             Aeron aeron = Aeron.connect();
             Publication publication = aeron.addPublication(channel, STREAM_ID))
         {

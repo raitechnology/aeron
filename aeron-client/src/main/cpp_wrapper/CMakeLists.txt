@@ -1,5 +1,5 @@
 #
-# Copyright 2014-2020 Real Logic Limited.
+# Copyright 2014-2021 Real Logic Limited.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -49,9 +49,6 @@ SET(HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/atomic/Atomic64_gcc_cpp11.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/atomic/Atomic64_gcc_x86_64.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/atomic/Atomic64_msvc.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/errors/ErrorLogDescriptor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/errors/ErrorLogReader.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/errors/DistinctErrorLog.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/logbuffer/BufferClaim.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/logbuffer/DataFrameHeader.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/logbuffer/FrameDescriptor.h
@@ -60,17 +57,10 @@ SET(HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/logbuffer/TermAppender.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/logbuffer/LogBufferDescriptor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/logbuffer/TermReader.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/ringbuffer/ManyToOneRingBuffer.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/ringbuffer/RecordDescriptor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/ringbuffer/RingBufferDescriptor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/ringbuffer/OneToOneRingBuffer.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/status/LocalSocketAddressStatus.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/status/ReadablePosition.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/status/Position.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/status/UnsafeBufferPosition.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/status/StatusIndicatorReader.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/reports/LossReportDescriptor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/reports/LossReportReader.h
     ${CMAKE_CURRENT_SOURCE_DIR}/concurrent/AtomicArrayUpdater.h
     ${CMAKE_CURRENT_SOURCE_DIR}/util/CommandOption.h
     ${CMAKE_CURRENT_SOURCE_DIR}/util/CommandOptionParser.h

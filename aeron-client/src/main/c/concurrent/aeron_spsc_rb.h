@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,6 +45,12 @@ aeron_rb_write_result_t aeron_spsc_rb_write(
 
 aeron_rb_write_result_t aeron_spsc_rb_writev(
     aeron_spsc_rb_t *ring_buffer, int32_t msg_type_id, const struct iovec* iov, int iovcnt);
+
+int32_t aeron_spsc_rb_try_claim(aeron_spsc_rb_t *ring_buffer, int32_t msg_type_id, size_t length);
+
+int aeron_spsc_rb_commit(aeron_spsc_rb_t *ring_buffer, int32_t offset);
+
+int aeron_spsc_rb_abort(aeron_spsc_rb_t *ring_buffer, int32_t offset);
 
 size_t aeron_spsc_rb_read(
     aeron_spsc_rb_t *ring_buffer, aeron_rb_handler_t handler, void *clientd, size_t message_count_limit);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,8 @@ import io.aeron.driver.MediaDriver;
 import io.aeron.driver.ThreadingMode;
 import io.aeron.logbuffer.FragmentHandler;
 import io.aeron.test.Tests;
+import io.aeron.test.cluster.ClusterTests;
+import io.aeron.test.cluster.StubClusteredService;
 import org.agrona.CloseHelper;
 import org.agrona.ExpandableArrayBuffer;
 import org.agrona.concurrent.status.AtomicCounter;
@@ -47,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ClusterTimerTest
 {
-    private static final long MAX_CATALOG_ENTRIES = 128;
+    private static final long CATALOG_CAPACITY = 128 * 1024;
     private static final int INTERVAL_MS = 20;
 
     private ClusteredMediaDriver clusteredMediaDriver;
@@ -86,10 +88,7 @@ public class ClusterTimerTest
         launchReschedulingService(triggeredTimersCounter);
         connectClient();
 
-        while (triggeredTimersCounter.get() < 2)
-        {
-            Tests.yield();
-        }
+        Tests.awaitValue(triggeredTimersCounter, 2);
 
         final CountersReader counters = aeronCluster.context().aeron().countersReader();
         final int clusterId = clusteredMediaDriver.consensusModule().context().clusterId();
@@ -111,8 +110,6 @@ public class ClusterTimerTest
 
         forceCloseForRestart();
         final long triggeredSinceStart = triggeredTimersCounter.getAndSet(0);
-
-        triggeredTimersCounter.set(0);
 
         launchClusteredMediaDriver(false);
         launchReschedulingService(triggeredTimersCounter);
@@ -166,7 +163,7 @@ public class ClusterTimerTest
         {
             public void onSessionOpen(final ClientSession session, final long timestamp)
             {
-                schedule(1, timestamp + 10);
+                schedule(1, timestamp + 1_000_000); // Too far in the future
                 schedule(1, timestamp + 20);
                 schedule(2, timestamp + 30);
             }
@@ -211,7 +208,7 @@ public class ClusterTimerTest
     {
         final ClusteredService service = new StubClusteredService()
         {
-            int timerId = 1;
+            private int timerId = 1;
 
             public void onTimerEvent(final long correlationId, final long timestamp)
             {
@@ -284,11 +281,6 @@ public class ClusterTimerTest
                 .errorHandler(ClusterTests.errorHandler(0)));
     }
 
-    private AeronCluster connectToCluster()
-    {
-        return AeronCluster.connect();
-    }
-
     private void forceCloseForRestart()
     {
         CloseHelper.closeAll(aeronCluster, container, clusteredMediaDriver);
@@ -296,14 +288,11 @@ public class ClusterTimerTest
 
     private void connectClient()
     {
-        aeronCluster = null;
-        aeronCluster = connectToCluster();
+        aeronCluster = AeronCluster.connect();
     }
 
     private void launchClusteredMediaDriver(final boolean initialLaunch)
     {
-        clusteredMediaDriver = null;
-
         clusteredMediaDriver = ClusteredMediaDriver.launch(
             new MediaDriver.Context()
                 .warnIfDirectoryExists(initialLaunch)
@@ -312,12 +301,13 @@ public class ClusterTimerTest
                 .errorHandler(ClusterTests.errorHandler(0))
                 .dirDeleteOnStart(true),
             new Archive.Context()
-                .maxCatalogEntries(MAX_CATALOG_ENTRIES)
+                .catalogCapacity(CATALOG_CAPACITY)
                 .threadingMode(ArchiveThreadingMode.SHARED)
                 .recordingEventsEnabled(false)
                 .deleteArchiveOnStart(initialLaunch),
             new ConsensusModule.Context()
                 .errorHandler(ClusterTests.errorHandler(0))
+                .logChannel("aeron:ipc")
                 .terminationHook(ClusterTests.TERMINATION_HOOK)
                 .deleteDirOnStart(initialLaunch));
     }

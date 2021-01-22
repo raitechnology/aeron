@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ import io.aeron.security.Authenticator;
 import io.aeron.security.AuthenticatorSupplier;
 import io.aeron.security.CredentialsSupplier;
 import io.aeron.security.SessionProxy;
-import io.aeron.test.MediaDriverTestWatcher;
-import io.aeron.test.TestMediaDriver;
+import io.aeron.test.driver.MediaDriverTestWatcher;
+import io.aeron.test.driver.TestMediaDriver;
 import io.aeron.test.Tests;
 import org.agrona.CloseHelper;
 import org.agrona.SystemUtil;
@@ -358,7 +358,7 @@ public class ArchiveAuthenticationTest
 
         archive = Archive.launch(
             new Archive.Context()
-                .maxCatalogEntries(ArchiveSystemTests.MAX_CATALOG_ENTRIES)
+                .catalogCapacity(ArchiveSystemTests.CATALOG_CAPACITY)
                 .aeronDirectoryName(aeronDirectoryName)
                 .deleteArchiveOnStart(true)
                 .archiveDir(new File(SystemUtil.tmpDirName(), "archive"))

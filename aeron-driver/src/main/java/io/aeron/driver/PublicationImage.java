@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -89,7 +89,7 @@ class PublicationImagePadding3 extends PublicationImageReceiverFields
 /**
  * State maintained for active sessionIds within a channel for receiver processing
  */
-public class PublicationImage
+public final class PublicationImage
     extends PublicationImagePadding3
     implements LossHandler, DriverManagedResource, Subscribable
 {
@@ -474,7 +474,7 @@ public class PublicationImage
         trackConnection(transportIndex, remoteAddress, cachedNanoClock.nanoTime());
     }
 
-    final int trackRebuild(final long nowNs, final long statusMessageTimeoutNs)
+    int trackRebuild(final long nowNs, final long statusMessageTimeoutNs)
     {
         int workCount = 0;
 
@@ -729,14 +729,10 @@ public class PublicationImage
         congestionControl.onRttMeasurement(nowNs, rttInNs, srcAddress);
     }
 
-    /**
-     * Is the image in a state to accept new subscriptions?
-     *
-     * @return true if accepting new subscriptions.
-     */
     boolean isAcceptingSubscriptions()
     {
-        return subscriberPositions.length > 0 && (state == State.ACTIVE || state == State.INIT);
+        return subscriberPositions.length > 0 &&
+            (State.INIT == state || State.ACTIVE == state || (State.DRAINING == state && !isDrained()));
     }
 
     long joinPosition()

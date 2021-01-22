@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #define AERON_IPC_PUBLICATION_H
 
 #include "util/aeron_bitutil.h"
-#include "uri/aeron_uri.h"
+#include "uri/aeron_driver_uri.h"
 #include "util/aeron_fileutil.h"
 #include "aeron_driver_context.h"
 #include "aeron_system_counters.h"
@@ -54,6 +54,9 @@ typedef struct aeron_ipc_publication_stct
     }
     conductor_fields;
 
+    int32_t channel_length;
+    char *channel;
+
     char *log_file_name;
     int64_t term_window_length;
     int64_t trip_gain;
@@ -82,9 +85,11 @@ int aeron_ipc_publication_create(
     aeron_position_t *pub_pos_position,
     aeron_position_t *pub_lmt_position,
     int32_t initial_term_id,
-    aeron_uri_publication_params_t *params,
+    aeron_driver_uri_publication_params_t *params,
     bool is_exclusive,
-    aeron_system_counters_t *system_counters);
+    aeron_system_counters_t *system_counters,
+    size_t channel_length,
+    const char *channel);
 
 void aeron_ipc_publication_close(aeron_counters_manager_t *counters_manager, aeron_ipc_publication_t *publication);
 
@@ -111,10 +116,8 @@ inline void aeron_ipc_publication_add_subscriber_hook(void *clientd, int64_t *va
 inline void aeron_ipc_publication_remove_subscriber_hook(void *clientd, int64_t *value_addr)
 {
     aeron_ipc_publication_t *publication = (aeron_ipc_publication_t *)clientd;
-    int64_t position = aeron_counter_get_volatile(value_addr);
 
-    publication->conductor_fields.consumer_position = position > publication->conductor_fields.consumer_position ?
-        position : publication->conductor_fields.consumer_position;
+    aeron_ipc_publication_update_pub_lmt(publication);
 
     if (1 == publication->conductor_fields.subscribable.length && NULL != publication->mapped_raw_log.mapped_file.addr)
     {
@@ -193,6 +196,13 @@ inline bool aeron_ipc_publication_is_drained(aeron_ipc_publication_t *publicatio
 inline size_t aeron_ipc_publication_num_subscribers(aeron_ipc_publication_t *publication)
 {
     return publication->conductor_fields.subscribable.length;
+}
+
+inline bool aeron_ipc_publication_is_accepting_subscriptions(aeron_ipc_publication_t *publication)
+{
+    return AERON_IPC_PUBLICATION_STATE_ACTIVE == publication->conductor_fields.state ||
+        (AERON_IPC_PUBLICATION_STATE_DRAINING == publication->conductor_fields.state &&
+            !aeron_ipc_publication_is_drained(publication));
 }
 
 #endif //AERON_IPC_PUBLICATION_H

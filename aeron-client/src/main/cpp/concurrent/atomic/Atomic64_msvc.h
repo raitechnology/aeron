@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,6 @@
 
 namespace aeron { namespace concurrent { namespace atomic {
 
-/**
-* A compiler directive to not reorder instructions.
-*/
 inline void thread_fence()
 {
     std::atomic_thread_fence(std::memory_order_acq_rel);
@@ -80,25 +77,6 @@ inline std::int64_t getInt64Volatile(volatile std::int64_t *source)
     acquire();
 
     return sequence;
-}
-
-template<typename T>
-inline volatile T *getValueVolatile(volatile T **source)
-{
-    volatile T *t = *reinterpret_cast<volatile T **>(source);
-    acquire();
-
-    return t;
-}
-
-template<typename T>
-inline void putValueVolatile(volatile T *address, T value)
-{
-    static_assert(sizeof(T) <= 8, "Requires size <= 8 bytes");
-
-    release();
-    *reinterpret_cast<volatile T *>(address) = value;
-    fence();
 }
 
 inline void putInt64Ordered(volatile std::int64_t *address, std::int64_t value)

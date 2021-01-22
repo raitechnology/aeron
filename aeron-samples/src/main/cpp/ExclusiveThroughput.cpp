@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -122,6 +122,9 @@ int main(int argc, char **argv)
 
     signal(SIGINT, sigIntHandler);
 
+    std::shared_ptr<std::thread> rateReporterThread;
+    std::shared_ptr<std::thread> pollThread;
+
     try
     {
         Settings settings = parseCmdLine(cp, argc, argv);
@@ -185,14 +188,39 @@ int main(int argc, char **argv)
             publication = aeron.findExclusivePublication(publicationId);
         }
 
+        if (settings.messageLength > publication->maxPayloadLength())
+        {
+            std::cerr << "ERROR - tryClaim limit: messageLength=" << settings.messageLength
+                      << " > maxPayloadLength=" << publication->maxPayloadLength()
+                      << ", use publication offer or increase MTU." << std::endl;
+            return -1;
+        }
+
         RateReporter rateReporter(std::chrono::seconds(1), printRate);
         FragmentAssembler fragmentAssembler(rateReporterHandler(rateReporter));
         auto handler = fragmentAssembler.handler();
 
-        std::shared_ptr<std::thread> rateReporterThread;
-
         ExclusivePublication *publicationPtr = publication.get();
         Subscription *subscriptionPtr = subscription.get();
+
+        aeron::util::OnScopeExit tidy(
+            [&]()
+            {
+                running = false;
+                rateReporter.halt();
+
+                if (nullptr != pollThread && pollThread->joinable())
+                {
+                    pollThread->join();
+                    pollThread = nullptr;
+                }
+
+                if (nullptr != rateReporterThread && rateReporterThread->joinable())
+                {
+                    rateReporterThread->join();
+                    rateReporterThread = nullptr;
+                }
+            });
 
         if (settings.progress)
         {
@@ -202,7 +230,7 @@ int main(int argc, char **argv)
         std::uint64_t failedPolls = 0;
         std::uint64_t successfulPolls = 0;
 
-        std::thread pollThread(
+        pollThread = std::make_shared<std::thread>(
             [&]()
             {
                 while (!subscriptionPtr->isConnected())
@@ -278,16 +306,6 @@ int main(int argc, char **argv)
             printingActive = false;
         }
         while (isRunning() && continuationBarrier("Execute again?"));
-
-        running = false;
-        rateReporter.halt();
-
-        pollThread.join();
-
-        if (nullptr != rateReporterThread)
-        {
-            rateReporterThread->join();
-        }
     }
     catch (const CommandOptionException &e)
     {

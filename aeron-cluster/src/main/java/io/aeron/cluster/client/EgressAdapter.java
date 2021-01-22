@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014-2020 Real Logic Limited.
+ *  Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import static io.aeron.cluster.client.AeronCluster.SESSION_HEADER_LENGTH;
 /**
  * Adapter for dispatching egress messages from a cluster to a {@link EgressListener}.
  */
-public class EgressAdapter implements FragmentHandler
+public final class EgressAdapter implements FragmentHandler
 {
     private final long clusterSessionId;
     private final int fragmentLimit;

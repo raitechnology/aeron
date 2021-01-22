@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,10 +56,9 @@ class ArchiveInterceptor
     static class Catalog
     {
         @Advice.OnMethodEnter
-        static void catalogResized(
-            final int maxEntries, final long catalogLength, final int newMaxEntries, final long newCatalogLength)
+        static void catalogResized(final long catalogLength, final long newCatalogLength)
         {
-            LOGGER.logCatalogResize(maxEntries, catalogLength, newMaxEntries, newCatalogLength);
+            LOGGER.logCatalogResize(catalogLength, newCatalogLength);
         }
     }
 }

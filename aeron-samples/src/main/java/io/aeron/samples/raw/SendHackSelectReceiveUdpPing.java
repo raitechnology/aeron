@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,6 +49,12 @@ public class SendHackSelectReceiveUdpPing implements ToIntFunction<SelectionKey>
     private DatagramChannel receiveChannel;
     private int sequenceNumber;
 
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process.
+     * @throws IOException if an error occurs with the channel.
+     */
     public static void main(final String[] args) throws IOException
     {
         new SendHackSelectReceiveUdpPing().run();

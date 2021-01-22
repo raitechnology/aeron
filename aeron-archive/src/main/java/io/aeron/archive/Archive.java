@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -178,7 +178,7 @@ public final class Archive implements AutoCloseable
      * <p>
      * Details for the individual parameters can be found in the Javadoc for the {@link Context} setters.
      */
-    public static class Configuration
+    public static final class Configuration
     {
         /**
          * Filename for the single instance of a {@link Catalog} contents for an archive.
@@ -318,7 +318,10 @@ public final class Archive implements AutoCloseable
          * Maximum number of entries for the archive {@link Catalog}. Increasing this limit will require use of the
          * {@link CatalogTool}. The number of entries can be reduced by extending existing recordings rather than
          * creating new ones.
+         *
+         * @deprecated Use {@link #CATALOG_CAPACITY_PROP_NAME} instead.
          */
+        @Deprecated
         public static final String MAX_CATALOG_ENTRIES_PROP_NAME = "aeron.archive.max.catalog.entries";
 
         /**
@@ -326,7 +329,21 @@ public final class Archive implements AutoCloseable
          *
          * @see #MAX_CATALOG_ENTRIES_PROP_NAME
          */
-        public static final long MAX_CATALOG_ENTRIES_DEFAULT = Catalog.DEFAULT_MAX_ENTRIES;
+        @Deprecated
+        public static final long MAX_CATALOG_ENTRIES_DEFAULT = 8 * 1024;
+
+        /**
+         * Default capacity in bytes of the archive {@link Catalog}. {@link Catalog} will resize itself when this
+         * limit is reached.
+         */
+        public static final String CATALOG_CAPACITY_PROP_NAME = "aeron.archive.catalog.capacity";
+
+        /**
+         * Default capacity in bytes for the {@link Catalog}.
+         *
+         * @see #CATALOG_CAPACITY_PROP_NAME
+         */
+        public static final long CATALOG_CAPACITY_DEFAULT = Catalog.DEFAULT_CAPACITY;
 
         /**
          * Timeout for making a connection back to a client for a control session or replay.
@@ -564,11 +581,25 @@ public final class Archive implements AutoCloseable
         /**
          * Maximum number of catalog entries to allocate for the catalog file.
          *
+         * @deprecated Use {@link #catalogCapacity()} instead.
+         *
          * @return the maximum number of catalog entries to support for the catalog file.
+         * @see #catalogCapacity()
          */
+        @Deprecated
         public static long maxCatalogEntries()
         {
             return Long.getLong(MAX_CATALOG_ENTRIES_PROP_NAME, MAX_CATALOG_ENTRIES_DEFAULT);
+        }
+
+        /**
+         * Default capacity (size) in bytes for the catalog file.
+         *
+         * @return default size of the catalog file in bytes.
+         */
+        public static long catalogCapacity()
+        {
+            return Long.getLong(CATALOG_CAPACITY_PROP_NAME, CATALOG_CAPACITY_DEFAULT);
         }
 
         /**
@@ -684,7 +715,7 @@ public final class Archive implements AutoCloseable
      * The context will be owned by {@link ArchiveConductor} after a successful
      * {@link Archive#launch(Context)} and closed via {@link Archive#close()}.
      */
-    public static class Context implements Cloneable
+    public static final class Context implements Cloneable
     {
         /**
          * Using an integer because there is no support for boolean. 1 is concluded, 0 is not concluded.
@@ -720,6 +751,7 @@ public final class Archive implements AutoCloseable
         private long connectTimeoutNs = Configuration.connectTimeoutNs();
         private long replayLingerTimeoutNs = Configuration.replayLingerTimeoutNs();
         private long maxCatalogEntries = Configuration.maxCatalogEntries();
+        private long catalogCapacity = Configuration.catalogCapacity();
         private int segmentFileLength = Configuration.segmentFileLength();
         private int fileSyncLevel = Configuration.fileSyncLevel();
         private int catalogFileSyncLevel = Configuration.catalogFileSyncLevel();
@@ -844,6 +876,7 @@ public final class Archive implements AutoCloseable
                         .epochClock(epochClock)
                         .driverAgentInvoker(mediaDriverAgentInvoker)
                         .useConductorAgentInvoker(true)
+                        .subscriberErrorHandler(RethrowingErrorHandler.INSTANCE)
                         .awaitingIdleStrategy(YieldingIdleStrategy.INSTANCE)
                         .clientLock(NoOpLock.INSTANCE));
 
@@ -918,7 +951,7 @@ public final class Archive implements AutoCloseable
                     archiveDir,
                     archiveDirChannel,
                     catalogFileSyncLevel,
-                    maxCatalogEntries,
+                    catalogCapacity,
                     epochClock,
                     recordChecksum,
                     null != recordChecksum ? recordChecksumBuffer() : dataBuffer());
@@ -1999,9 +2032,14 @@ public final class Archive implements AutoCloseable
         /**
          * Maximum number of catalog entries for the Archive.
          *
+         * @deprecated This method was deprecated in favor of {@link #catalogCapacity(long)} which works with bytes
+         * rather than number of entries.
+         *
          * @param maxCatalogEntries for the archive.
          * @return this for a fluent API.
+         * @see #catalogCapacity(long)
          */
+        @Deprecated
         public Context maxCatalogEntries(final long maxCatalogEntries)
         {
             this.maxCatalogEntries = maxCatalogEntries;
@@ -2011,11 +2049,38 @@ public final class Archive implements AutoCloseable
         /**
          * Maximum number of catalog entries for the Archive.
          *
+         * @deprecated This method was deprecated in favor of {@link #catalogCapacity()} which returns capacity of
+         * the {@link Catalog} in bytes rathen than in number of entries.
+         *
          * @return maximum number of catalog entries for the Archive.
+         * @see #catalogCapacity()
          */
+        @Deprecated
         public long maxCatalogEntries()
         {
             return maxCatalogEntries;
+        }
+
+        /**
+         * Capacity in bytes of the {@link Catalog}.
+         *
+         * @param catalogCapacity in bytes.
+         * @return this for a fluent API.
+         */
+        public Context catalogCapacity(final long catalogCapacity)
+        {
+            this.catalogCapacity = catalogCapacity;
+            return this;
+        }
+
+        /**
+         * Capacity in bytes of the {@link Catalog}.
+         *
+         * @return capacity in bytes of the {@link Catalog}.
+         */
+        public long catalogCapacity()
+        {
+            return catalogCapacity;
         }
 
         /**

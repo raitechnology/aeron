@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,23 @@
  * limitations under the License.
  */
 
+#if defined(__linux__)
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "util/aeron_platform.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include "util/aeron_bitutil.h"
-#include "aeron_alloc.h"
 
 #if defined(AERON_COMPILER_MSVC)
 #include <windows.h>
 #endif
+
+#include "util/aeron_bitutil.h"
+#include "aeron_alloc.h"
 
 int aeron_alloc_no_err(void **ptr, size_t size)
 {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -101,8 +101,7 @@ int aeron_client_conductor_init(aeron_client_conductor_t *conductor, aeron_conte
     if (NULL != context->on_available_counter)
     {
         int result = 0;
-        AERON_ARRAY_ENSURE_CAPACITY(
-            result, conductor->available_counter_handlers, aeron_on_available_counter_pair_t);
+        AERON_ARRAY_ENSURE_CAPACITY(result, conductor->available_counter_handlers, aeron_on_available_counter_pair_t);
         if (result < 0)
         {
             int errcode = errno;
@@ -632,8 +631,6 @@ void aeron_client_conductor_delete_resource(void *clientd, int64_t key, void *va
             break;
 
         case AERON_CLIENT_TYPE_LOGBUFFER:
-            break;
-
         case AERON_CLIENT_TYPE_DESTINATION:
             break;
     }
@@ -700,8 +697,6 @@ void aeron_client_conductor_force_close_resource(void *clientd, int64_t key, voi
             break;
 
         case AERON_CLIENT_TYPE_LOGBUFFER:
-            break;
-
         case AERON_CLIENT_TYPE_DESTINATION:
             break;
     }
@@ -747,8 +742,7 @@ int aeron_client_conductor_linger_image(aeron_client_conductor_t *conductor, aer
 }
 
 int aeron_client_conductor_linger_or_delete_all_images(
-    aeron_client_conductor_t *conductor,
-    aeron_subscription_t *subscription)
+    aeron_client_conductor_t *conductor, aeron_subscription_t *subscription)
 {
     volatile aeron_image_list_t *current_image_list = aeron_client_conductor_subscription_image_list(subscription);
 
@@ -804,21 +798,15 @@ void aeron_client_conductor_on_cmd_add_publication(void *clientd, void *item)
     aeron_client_conductor_t *conductor = (aeron_client_conductor_t *)clientd;
     aeron_async_add_publication_t *async = (aeron_async_add_publication_t *)item;
 
-    char buffer[sizeof(aeron_publication_command_t) + AERON_MAX_PATH];
-    aeron_publication_command_t *command = (aeron_publication_command_t *)buffer;
+    const size_t command_length = sizeof(aeron_publication_command_t) + async->uri_length;
+
     int ensure_capacity_result = 0, rb_offer_fail_count = 0;
 
-    command->correlated.correlation_id = async->registration_id;
-    command->correlated.client_id = conductor->client_id;
-    command->stream_id = async->stream_id;
-    command->channel_length = async->uri_length;
-    memcpy(buffer + sizeof(aeron_publication_command_t), async->uri, (size_t)async->uri_length);
-
-    while (AERON_RB_SUCCESS != aeron_mpsc_rb_write(
+    int32_t offset;
+    while ((offset = aeron_mpsc_rb_try_claim(
         &conductor->to_driver_buffer,
         AERON_COMMAND_ADD_PUBLICATION,
-        buffer,
-        sizeof(aeron_publication_command_t) + async->uri_length))
+        command_length)) < 0)
     {
         if (++rb_offer_fail_count > AERON_CLIENT_COMMAND_RB_FAIL_THRESHOLD)
         {
@@ -832,6 +820,16 @@ void aeron_client_conductor_on_cmd_add_publication(void *clientd, void *item)
 
         sched_yield();
     }
+
+    uint8_t *ptr = (conductor->to_driver_buffer.buffer + offset);
+    aeron_publication_command_t *command = (aeron_publication_command_t *)ptr;
+    command->correlated.correlation_id = async->registration_id;
+    command->correlated.client_id = conductor->client_id;
+    command->stream_id = async->stream_id;
+    command->channel_length = async->uri_length;
+    memcpy(ptr + sizeof(aeron_publication_command_t), async->uri, (size_t)async->uri_length);
+
+    aeron_mpsc_rb_commit(&conductor->to_driver_buffer, offset);
 
     AERON_ARRAY_ENSURE_CAPACITY(
         ensure_capacity_result, conductor->registering_resources, aeron_client_registering_resource_entry_t);
@@ -871,21 +869,15 @@ void aeron_client_conductor_on_cmd_add_exclusive_publication(void *clientd, void
     aeron_client_conductor_t *conductor = (aeron_client_conductor_t *)clientd;
     aeron_async_add_exclusive_publication_t *async = (aeron_async_add_exclusive_publication_t *)item;
 
-    char buffer[sizeof(aeron_publication_command_t) + AERON_MAX_PATH];
-    aeron_publication_command_t *command = (aeron_publication_command_t *)buffer;
+    const size_t command_length = sizeof(aeron_publication_command_t) + async->uri_length;
+
     int ensure_capacity_result = 0, rb_offer_fail_count = 0;
 
-    command->correlated.correlation_id = async->registration_id;
-    command->correlated.client_id = conductor->client_id;
-    command->stream_id = async->stream_id;
-    command->channel_length = async->uri_length;
-    memcpy(buffer + sizeof(aeron_publication_command_t), async->uri, (size_t)async->uri_length);
-
-    while (AERON_RB_SUCCESS != aeron_mpsc_rb_write(
+    int32_t offset;
+    while ((offset = aeron_mpsc_rb_try_claim(
         &conductor->to_driver_buffer,
         AERON_COMMAND_ADD_EXCLUSIVE_PUBLICATION,
-        buffer,
-        sizeof(aeron_publication_command_t) + async->uri_length))
+        command_length)) < 0)
     {
         if (++rb_offer_fail_count > AERON_CLIENT_COMMAND_RB_FAIL_THRESHOLD)
         {
@@ -899,6 +891,16 @@ void aeron_client_conductor_on_cmd_add_exclusive_publication(void *clientd, void
 
         sched_yield();
     }
+
+    uint8_t *ptr = (conductor->to_driver_buffer.buffer + offset);
+    aeron_publication_command_t *command = (aeron_publication_command_t *)ptr;
+    command->correlated.correlation_id = async->registration_id;
+    command->correlated.client_id = conductor->client_id;
+    command->stream_id = async->stream_id;
+    command->channel_length = async->uri_length;
+    memcpy(ptr + sizeof(aeron_publication_command_t), async->uri, (size_t)async->uri_length);
+
+    aeron_mpsc_rb_commit(&conductor->to_driver_buffer, offset);
 
     AERON_ARRAY_ENSURE_CAPACITY(
         ensure_capacity_result, conductor->registering_resources, aeron_client_registering_resource_entry_t);
@@ -917,8 +919,8 @@ void aeron_client_conductor_on_cmd_add_exclusive_publication(void *clientd, void
 
 void aeron_client_conductor_on_cmd_close_exclusive_publication(void *clientd, void *item)
 {
-    aeron_client_conductor_t *conductor = (aeron_client_conductor_t *) clientd;
-    aeron_exclusive_publication_t *publication = (aeron_exclusive_publication_t *) item;
+    aeron_client_conductor_t *conductor = (aeron_client_conductor_t *)clientd;
+    aeron_exclusive_publication_t *publication = (aeron_exclusive_publication_t *)item;
     aeron_notification_t on_close_complete = publication->on_close_complete;
     void *on_close_complete_clientd = publication->on_close_complete_clientd;
 
@@ -938,21 +940,15 @@ void aeron_client_conductor_on_cmd_add_subscription(void *clientd, void *item)
     aeron_client_conductor_t *conductor = (aeron_client_conductor_t *)clientd;
     aeron_async_add_subscription_t *async = (aeron_async_add_subscription_t *)item;
 
-    char buffer[sizeof(aeron_subscription_command_t) + AERON_MAX_PATH];
-    aeron_subscription_command_t *command = (aeron_subscription_command_t *)buffer;
+    const size_t command_length = sizeof(aeron_subscription_command_t) + async->uri_length;
+
     int ensure_capacity_result = 0, rb_offer_fail_count = 0;
 
-    command->correlated.correlation_id = async->registration_id;
-    command->correlated.client_id = conductor->client_id;
-    command->stream_id = async->stream_id;
-    command->channel_length = async->uri_length;
-    memcpy(buffer + sizeof(aeron_subscription_command_t), async->uri, (size_t)async->uri_length);
-
-    while (AERON_RB_SUCCESS != aeron_mpsc_rb_write(
+    int32_t offset;
+    while ((offset = aeron_mpsc_rb_try_claim(
         &conductor->to_driver_buffer,
         AERON_COMMAND_ADD_SUBSCRIPTION,
-        buffer,
-        sizeof(aeron_subscription_command_t) + async->uri_length))
+        command_length)) < 0)
     {
         if (++rb_offer_fail_count > AERON_CLIENT_COMMAND_RB_FAIL_THRESHOLD)
         {
@@ -966,6 +962,16 @@ void aeron_client_conductor_on_cmd_add_subscription(void *clientd, void *item)
 
         sched_yield();
     }
+
+    uint8_t *ptr = (conductor->to_driver_buffer.buffer + offset);
+    aeron_subscription_command_t *command = (aeron_subscription_command_t *)ptr;
+    command->correlated.correlation_id = async->registration_id;
+    command->correlated.client_id = conductor->client_id;
+    command->stream_id = async->stream_id;
+    command->channel_length = async->uri_length;
+    memcpy(ptr + sizeof(aeron_subscription_command_t), async->uri, (size_t)async->uri_length);
+
+    aeron_mpsc_rb_commit(&conductor->to_driver_buffer, offset);
 
     AERON_ARRAY_ENSURE_CAPACITY(
         ensure_capacity_result, conductor->registering_resources, aeron_client_registering_resource_entry_t);
@@ -1005,32 +1011,18 @@ void aeron_client_conductor_on_cmd_add_counter(void *clientd, void *item)
     aeron_client_conductor_t *conductor = (aeron_client_conductor_t *)clientd;
     aeron_async_add_counter_t *async = (aeron_async_add_counter_t *)item;
 
-    char buffer[sizeof(aeron_async_add_counter_t) + (2 * sizeof(int32_t)) + (2 * AERON_MAX_PATH)];
-    aeron_counter_command_t *command = (aeron_counter_command_t *)buffer;
-    int ensure_capacity_result = 0, rb_offer_fail_count = 0;
-    char *cursor = buffer + sizeof(aeron_counter_command_t);
-
-    command->correlated.correlation_id = async->registration_id;
-    command->correlated.client_id = conductor->client_id;
-    command->type_id = async->counter.type_id;
-
-    memcpy(cursor, &async->counter.key_buffer_length, sizeof(int32_t));
-    cursor += sizeof(int32_t);
-    memcpy(cursor, async->counter.key_buffer, (size_t)async->counter.key_buffer_length);
-    cursor += AERON_ALIGN(async->counter.key_buffer_length, sizeof(int32_t));
-    memcpy(cursor, &async->counter.label_buffer_length, sizeof(int32_t));
-    cursor += sizeof(int32_t);
-    memcpy(cursor, async->counter.label_buffer, (size_t)async->counter.label_buffer_length);
-
-    size_t length =
+    const size_t command_length =
         sizeof(aeron_counter_command_t) +
         sizeof(int32_t) +
         (size_t)(AERON_ALIGN(async->counter.key_buffer_length, sizeof(int32_t))) +
         sizeof(int32_t) +
         (size_t)async->counter.label_buffer_length;
 
-    while (AERON_RB_SUCCESS != aeron_mpsc_rb_write(
-        &conductor->to_driver_buffer, AERON_COMMAND_ADD_COUNTER, buffer, length))
+    int ensure_capacity_result = 0, rb_offer_fail_count = 0;
+
+    int32_t offset;
+    while ((offset = aeron_mpsc_rb_try_claim(
+        &conductor->to_driver_buffer, AERON_COMMAND_ADD_COUNTER, command_length)) < 0)
     {
         if (++rb_offer_fail_count > AERON_CLIENT_COMMAND_RB_FAIL_THRESHOLD)
         {
@@ -1044,6 +1036,24 @@ void aeron_client_conductor_on_cmd_add_counter(void *clientd, void *item)
 
         sched_yield();
     }
+
+    uint8_t *ptr = (conductor->to_driver_buffer.buffer + offset);
+    aeron_counter_command_t *command = (aeron_counter_command_t *)ptr;
+    char *cursor = (char *)(ptr + sizeof(aeron_counter_command_t));
+
+    command->correlated.correlation_id = async->registration_id;
+    command->correlated.client_id = conductor->client_id;
+    command->type_id = async->counter.type_id;
+
+    memcpy(cursor, &async->counter.key_buffer_length, sizeof(int32_t));
+    cursor += sizeof(int32_t);
+    memcpy(cursor, async->counter.key_buffer, (size_t)async->counter.key_buffer_length);
+    cursor += AERON_ALIGN(async->counter.key_buffer_length, sizeof(int32_t));
+    memcpy(cursor, &async->counter.label_buffer_length, sizeof(int32_t));
+    cursor += sizeof(int32_t);
+    memcpy(cursor, async->counter.label_buffer, (size_t)async->counter.label_buffer_length);
+
+    aeron_mpsc_rb_commit(&conductor->to_driver_buffer, offset);
 
     AERON_ARRAY_ENSURE_CAPACITY(
         ensure_capacity_result, conductor->registering_resources, aeron_client_registering_resource_entry_t);
@@ -1082,10 +1092,6 @@ static void aeron_client_conductor_on_cmd_destination(const void *clientd, const
     aeron_client_conductor_t *conductor = (aeron_client_conductor_t *)clientd;
     aeron_async_destination_t *async = (aeron_async_destination_t *)item;
 
-    char buffer[sizeof(aeron_destination_command_t) + sizeof(int32_t) + AERON_MAX_PATH];
-    aeron_destination_command_t *command = (aeron_destination_command_t *)buffer;
-    int ensure_capacity_result = 0, rb_offer_fail_count = 0;
-
     int64_t resource_registration_id = 0;
     switch (async->resource.base_resource->type)
     {
@@ -1114,17 +1120,14 @@ static void aeron_client_conductor_on_cmd_destination(const void *clientd, const
         }
     }
 
-    command->correlated.correlation_id = async->registration_id;
-    command->correlated.client_id = conductor->client_id;
-    command->registration_id = resource_registration_id;
-    command->channel_length = async->uri_length;
-    memcpy(buffer + sizeof(aeron_destination_command_t), async->uri, (size_t)async->uri_length);
+    const size_t command_length = sizeof(aeron_destination_command_t) + async->uri_length;
+    int ensure_capacity_result = 0, rb_offer_fail_count = 0;
 
-    while (AERON_RB_SUCCESS != aeron_mpsc_rb_write(
+    int32_t offset;
+    while ((offset = aeron_mpsc_rb_try_claim(
         &conductor->to_driver_buffer,
         msg_type_id,
-        buffer,
-        sizeof(aeron_destination_command_t) + async->uri_length))
+        command_length)) < 0)
     {
         if (++rb_offer_fail_count > AERON_CLIENT_COMMAND_RB_FAIL_THRESHOLD)
         {
@@ -1139,6 +1142,16 @@ static void aeron_client_conductor_on_cmd_destination(const void *clientd, const
         sched_yield();
     }
 
+    uint8_t *ptr = (conductor->to_driver_buffer.buffer + offset);
+    aeron_destination_command_t *command = (aeron_destination_command_t *)ptr;
+    command->correlated.correlation_id = async->registration_id;
+    command->correlated.client_id = conductor->client_id;
+    command->registration_id = resource_registration_id;
+    command->channel_length = async->uri_length;
+    memcpy(ptr + sizeof(aeron_destination_command_t), async->uri, (size_t)async->uri_length);
+
+    aeron_mpsc_rb_commit(&conductor->to_driver_buffer, offset);
+
     AERON_ARRAY_ENSURE_CAPACITY(
         ensure_capacity_result, conductor->registering_resources, aeron_client_registering_resource_entry_t);
     if (ensure_capacity_result < 0)
@@ -1152,8 +1165,6 @@ static void aeron_client_conductor_on_cmd_destination(const void *clientd, const
 
     conductor->registering_resources.array[conductor->registering_resources.length++].resource = async;
     async->registration_deadline_ns = (long long)(conductor->nano_clock() + conductor->driver_timeout_ns);
-
-    return;
 }
 
 void aeron_client_conductor_on_cmd_add_destination(void *clientd, void *item)
@@ -1709,7 +1720,7 @@ static int aeron_client_conductor_async_destination(
         return -1;
     }
 
-    if (aeron_alloc((void **)&cmd, sizeof(aeron_async_destination_t )) < 0)
+    if (aeron_alloc((void **)&cmd, sizeof(aeron_async_destination_t)) < 0)
     {
         int errcode = errno;
 
@@ -2370,16 +2381,11 @@ int aeron_client_conductor_on_client_timeout(aeron_client_conductor_t *conductor
 int aeron_client_conductor_offer_remove_command(
     aeron_client_conductor_t *conductor, int64_t registration_id, int32_t command_type)
 {
-    char buffer[sizeof(aeron_remove_command_t)];
-    aeron_remove_command_t *command = (aeron_remove_command_t *)buffer;
     int rb_offer_fail_count = 0;
 
-    command->correlated.correlation_id = aeron_mpsc_rb_next_correlation_id(&conductor->to_driver_buffer);
-    command->correlated.client_id = conductor->client_id;
-    command->registration_id = registration_id;
-
-    while (AERON_RB_SUCCESS != aeron_mpsc_rb_write(
-        &conductor->to_driver_buffer, command_type, buffer,sizeof(aeron_remove_command_t)))
+    int32_t offset;
+    while ((offset = aeron_mpsc_rb_try_claim(
+        &conductor->to_driver_buffer, command_type, sizeof(aeron_remove_command_t))) < 0)
     {
         if (++rb_offer_fail_count > AERON_CLIENT_COMMAND_RB_FAIL_THRESHOLD)
         {
@@ -2395,6 +2401,14 @@ int aeron_client_conductor_offer_remove_command(
         sched_yield();
     }
 
+    aeron_remove_command_t *command = (aeron_remove_command_t *)(conductor->to_driver_buffer.buffer + offset);
+
+    command->correlated.correlation_id = aeron_mpsc_rb_next_correlation_id(&conductor->to_driver_buffer);
+    command->correlated.client_id = conductor->client_id;
+    command->registration_id = registration_id;
+
+    aeron_mpsc_rb_commit(&conductor->to_driver_buffer, offset);
+
     return 0;
 }
 
@@ -2406,18 +2420,11 @@ int aeron_client_conductor_offer_destination_command(
     int64_t *correlation_id)
 {
     size_t uri_length = strlen(uri);
-    char buffer[sizeof(aeron_destination_command_t) + sizeof(int32_t) + AERON_MAX_PATH];
-    aeron_destination_command_t *command = (aeron_destination_command_t *)buffer;
+    const size_t command_length = sizeof(aeron_destination_command_t) + uri_length;
     int rb_offer_fail_count = 0;
 
-    command->correlated.correlation_id = aeron_mpsc_rb_next_correlation_id(&conductor->to_driver_buffer);
-    command->correlated.client_id = conductor->client_id;
-    command->registration_id = registration_id;
-    command->channel_length = (int32_t)uri_length;
-    memcpy(buffer + sizeof(aeron_destination_command_t), uri, uri_length);
-
-    while (AERON_RB_SUCCESS != aeron_mpsc_rb_write(
-        &conductor->to_driver_buffer, command_type, buffer,sizeof(aeron_destination_command_t) + uri_length))
+    int32_t offset;
+    while ((offset = aeron_mpsc_rb_try_claim(&conductor->to_driver_buffer, command_type, command_length)) < 0)
     {
         if (++rb_offer_fail_count > AERON_CLIENT_COMMAND_RB_FAIL_THRESHOLD)
         {
@@ -2432,6 +2439,16 @@ int aeron_client_conductor_offer_destination_command(
 
         sched_yield();
     }
+
+    uint8_t *ptr = (conductor->to_driver_buffer.buffer + offset);
+    aeron_destination_command_t *command = (aeron_destination_command_t *)ptr;
+    command->correlated.correlation_id = aeron_mpsc_rb_next_correlation_id(&conductor->to_driver_buffer);
+    command->correlated.client_id = conductor->client_id;
+    command->registration_id = registration_id;
+    command->channel_length = (int32_t)uri_length;
+    memcpy(ptr + sizeof(aeron_destination_command_t), uri, uri_length);
+
+    aeron_mpsc_rb_commit(&conductor->to_driver_buffer, offset);
 
     if (NULL != correlation_id)
     {

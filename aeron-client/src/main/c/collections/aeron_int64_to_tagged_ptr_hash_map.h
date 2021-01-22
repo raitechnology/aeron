@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +18,12 @@
 #define AERON_INT32_TO_TAGGED_PTR_HASH_MAP_H
 
 #include <stdbool.h>
-#include <errno.h>
 #include <string.h>
+#include <errno.h>
 
 #include "util/aeron_platform.h"
-#include "collections/aeron_map.h"
 #include "util/aeron_bitutil.h"
+#include "collections/aeron_map.h"
 #include "aeron_alloc.h"
 
 typedef struct aeron_int64_to_tagged_ptr_entry_stct

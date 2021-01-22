@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014-2020 Real Logic Limited.
+ *  Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -134,17 +134,16 @@ public final class ClusterBackup implements AutoCloseable
             ctx.conclude();
             this.ctx = ctx;
 
-            final ClusterBackupAgent clusterBackupAgent = new ClusterBackupAgent(ctx);
+            final ClusterBackupAgent agent = new ClusterBackupAgent(ctx);
 
             if (ctx.useAgentInvoker())
             {
                 agentRunner = null;
-                agentInvoker = new AgentInvoker(ctx.errorHandler(), ctx.errorCounter(), clusterBackupAgent);
+                agentInvoker = new AgentInvoker(ctx.errorHandler(), ctx.errorCounter(), agent);
             }
             else
             {
-                agentRunner = new AgentRunner(
-                    ctx.idleStrategy(), ctx.errorHandler(), ctx.errorCounter(), clusterBackupAgent);
+                agentRunner = new AgentRunner(ctx.idleStrategy(), ctx.errorHandler(), ctx.errorCounter(), agent);
                 agentInvoker = null;
             }
         }
@@ -225,7 +224,15 @@ public final class ClusterBackup implements AutoCloseable
      */
     public static class Configuration
     {
+        /**
+         * Default which is derived from {@link ConsensusModule.Context#consensusChannel()} with the member endpoint
+         * added for the consensus channel.
+         */
         public static final String CONSENSUS_CHANNEL_DEFAULT;
+
+        /**
+         * Member endpoint used for the the catchup channel.
+         */
         public static final String CATCHUP_ENDPOINT_DEFAULT;
 
         /**

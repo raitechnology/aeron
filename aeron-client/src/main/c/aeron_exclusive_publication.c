@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 #include "aeron_exclusive_publication.h"
 #include "concurrent/aeron_exclusive_term_appender.h"
 #include "aeron_log_buffer.h"
+#include "status/aeron_local_sockaddr.h"
 
 int aeron_exclusive_publication_create(
     aeron_exclusive_publication_t **publication,
@@ -135,7 +136,7 @@ int64_t aeron_exclusive_publication_offer(
     int64_t new_position = AERON_PUBLICATION_CLOSED;
     bool is_closed;
 
-    if (NULL == publication || buffer == NULL)
+    if (NULL == publication || NULL == buffer)
     {
         errno = EINVAL;
         aeron_set_err(EINVAL, "aeron_exclusive_publication_offer(NULL): %s", strerror(EINVAL));
@@ -214,7 +215,7 @@ int64_t aeron_exclusive_publication_offerv(
     int64_t new_position = AERON_PUBLICATION_CLOSED;
     bool is_closed;
 
-    if (NULL == publication || iov == NULL)
+    if (NULL == publication || NULL == iov)
     {
         errno = EINVAL;
         aeron_set_err(EINVAL, "aeron_exclusive_publication_offerv(NULL): %s", strerror(EINVAL));
@@ -297,7 +298,7 @@ int64_t aeron_exclusive_publication_try_claim(
     int64_t new_position = AERON_PUBLICATION_CLOSED;
     bool is_closed;
 
-    if (NULL == publication || buffer_claim == NULL)
+    if (NULL == publication || NULL == buffer_claim)
     {
         errno = EINVAL;
         aeron_set_err(EINVAL, "aeron_exclusive_publication_try_claim(NULL): %s", strerror(EINVAL));
@@ -524,6 +525,7 @@ int aeron_exclusive_publication_constants(
     constants->initial_term_id = publication->initial_term_id;
     constants->publication_limit_counter_id = publication->position_limit_counter_id;
     constants->channel_status_indicator_id = publication->channel_status_indicator_id;
+
     return 0;
 }
 
@@ -578,6 +580,23 @@ int64_t aeron_exclusive_publication_position_limit(aeron_exclusive_publication_t
     }
 
     return aeron_counter_get_volatile(publication->position_limit);
+}
+
+int aeron_exclusive_publication_local_sockaddrs(
+    aeron_exclusive_publication_t *publication, aeron_iovec_t *address_vec, size_t address_vec_len)
+{
+    if (NULL == publication || NULL == address_vec || address_vec_len < 1)
+    {
+        errno = EINVAL;
+        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
+        return -1;
+    }
+
+    return aeron_local_sockaddr_find_addrs(
+        &publication->conductor->counters_reader,
+        publication->channel_status_indicator_id,
+        address_vec,
+        address_vec_len);
 }
 
 extern void aeron_exclusive_publication_rotate_term(aeron_exclusive_publication_t *publication);

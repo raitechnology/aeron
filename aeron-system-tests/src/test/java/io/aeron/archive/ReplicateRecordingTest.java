@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@ import io.aeron.archive.codecs.RecordingSignal;
 import io.aeron.archive.status.RecordingPos;
 import io.aeron.driver.MediaDriver;
 import io.aeron.driver.ThreadingMode;
-import io.aeron.test.MediaDriverTestWatcher;
-import io.aeron.test.TestMediaDriver;
+import io.aeron.test.driver.MediaDriverTestWatcher;
+import io.aeron.test.driver.TestMediaDriver;
 import io.aeron.test.Tests;
 import org.agrona.CloseHelper;
 import org.agrona.SystemUtil;
@@ -56,9 +56,9 @@ public class ReplicateRecordingTest
 {
     private static final int SRC_CONTROL_STREAM_ID = AeronArchive.Configuration.CONTROL_STREAM_ID_DEFAULT;
     private static final String SRC_CONTROL_REQUEST_CHANNEL = "aeron:udp?endpoint=localhost:8090";
-    private static final String SRC_CONTROL_RESPONSE_CHANNEL = "aeron:udp?endpoint=localhost:8091";
+    private static final String SRC_CONTROL_RESPONSE_CHANNEL = "aeron:udp?endpoint=localhost:0";
     private static final String DST_CONTROL_REQUEST_CHANNEL = "aeron:udp?endpoint=localhost:8095";
-    private static final String DST_CONTROL_RESPONSE_CHANNEL = "aeron:udp?endpoint=localhost:8096";
+    private static final String DST_CONTROL_RESPONSE_CHANNEL = "aeron:udp?endpoint=localhost:0";
     private static final String SRC_REPLICATION_CHANNEL = "aeron:udp?endpoint=localhost:0";
     private static final String DST_REPLICATION_CHANNEL = "aeron:udp?endpoint=localhost:0";
     private static final long TIMER_INTERVAL_NS = TimeUnit.MILLISECONDS.toNanos(15);
@@ -100,7 +100,7 @@ public class ReplicateRecordingTest
 
         srcArchive = Archive.launch(
             new Archive.Context()
-                .maxCatalogEntries(MAX_CATALOG_ENTRIES)
+                .catalogCapacity(CATALOG_CAPACITY)
                 .aeronDirectoryName(srcAeronDirectoryName)
                 .controlChannel(SRC_CONTROL_REQUEST_CHANNEL)
                 .archiveClientContext(new AeronArchive.Context().controlResponseChannel(SRC_CONTROL_RESPONSE_CHANNEL))
@@ -124,7 +124,7 @@ public class ReplicateRecordingTest
 
         dstArchive = Archive.launch(
             new Archive.Context()
-                .maxCatalogEntries(MAX_CATALOG_ENTRIES)
+                .catalogCapacity(CATALOG_CAPACITY)
                 .aeronDirectoryName(dstAeronDirectoryName)
                 .controlChannel(DST_CONTROL_REQUEST_CHANNEL)
                 .archiveClientContext(new AeronArchive.Context().controlResponseChannel(DST_CONTROL_RESPONSE_CHANNEL))
@@ -575,15 +575,6 @@ public class ReplicateRecordingTest
     private RecordingSignalAdapter newRecordingSignalAdapter(
         final MutableReference<RecordingSignal> signalRef, final MutableLong recordingIdRef)
     {
-        final ControlEventListener listener =
-            (controlSessionId, correlationId, relevantId, code, errorMessage) ->
-            {
-                if (code == ControlResponseCode.ERROR)
-                {
-                    throw new ArchiveException(errorMessage, (int)relevantId, correlationId);
-                }
-            };
-
-        return newRecordingSignalAdapter(listener, signalRef, recordingIdRef);
+        return newRecordingSignalAdapter(ERROR_CONTROL_LISTENER, signalRef, recordingIdRef);
     }
 }

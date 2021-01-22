@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,10 @@ import io.aeron.archive.client.AeronArchive;
 import io.aeron.archive.codecs.SourceLocation;
 import io.aeron.driver.MediaDriver;
 import io.aeron.driver.ThreadingMode;
-import io.aeron.logbuffer.FrameDescriptor;
-import io.aeron.test.MediaDriverTestWatcher;
-import io.aeron.test.TestMediaDriver;
+import io.aeron.test.driver.MediaDriverTestWatcher;
+import io.aeron.test.driver.TestMediaDriver;
 import io.aeron.test.Tests;
 import org.agrona.CloseHelper;
-import org.agrona.IoUtil;
 import org.agrona.SystemUtil;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.YieldingIdleStrategy;
@@ -40,16 +38,13 @@ import org.junit.jupiter.api.extension.TestWatcher;
 import java.io.File;
 import java.util.Random;
 
-import static org.agrona.BufferUtil.allocateDirectAligned;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class ArchiveDeleteAndRestartTest
 {
     private static final int SYNC_LEVEL = 0;
-    private static final int PUBLISH_STREAM_ID = 1;
+    private static final int STREAM_ID = 1;
 
-    private final UnsafeBuffer buffer = new UnsafeBuffer(allocateDirectAligned(4096, FrameDescriptor.FRAME_ALIGNMENT));
-    private final Random rnd = new Random();
     private final long seed = System.nanoTime();
 
     @RegisterExtension
@@ -67,6 +62,7 @@ public class ArchiveDeleteAndRestartTest
     @BeforeEach
     public void before()
     {
+        final Random rnd = new Random();
         rnd.setSeed(seed);
 
         final int termLength = 1 << (16 + rnd.nextInt(10)); // 1M to 8M
@@ -83,7 +79,7 @@ public class ArchiveDeleteAndRestartTest
             testWatcher);
 
         archiveContext = new Archive.Context()
-            .maxCatalogEntries(ArchiveSystemTests.MAX_CATALOG_ENTRIES)
+            .catalogCapacity(ArchiveSystemTests.CATALOG_CAPACITY)
             .fileSyncLevel(SYNC_LEVEL)
             .deleteArchiveOnStart(true)
             .archiveDir(new File(SystemUtil.tmpDirName(), "archive-test"))
@@ -116,14 +112,15 @@ public class ArchiveDeleteAndRestartTest
     @Test
     public void recordAndReplayExclusivePublication()
     {
-        buffer.setMemory(0, 1024, (byte)'z');
+        final UnsafeBuffer buffer = new UnsafeBuffer(new byte[1024]);
+        buffer.setMemory(0, buffer.capacity(), (byte)'z');
 
         AeronArchive aeronArchive = AeronArchive.connect(new AeronArchive.Context().aeron(client));
 
-        final String uri = "aeron:ipc?term-length=16777216|init-term-id=502090867|term-offset=0|term-id=502090867";
-        final ExclusivePublication recordedPublication1 = client.addExclusivePublication(uri, PUBLISH_STREAM_ID);
+        final String uri = "aeron:ipc?term-length=16m|init-term-id=502090867|term-offset=0|term-id=502090867";
+        final ExclusivePublication recordedPublication1 = client.addExclusivePublication(uri, STREAM_ID);
 
-        aeronArchive.startRecording(uri, PUBLISH_STREAM_ID, SourceLocation.LOCAL);
+        final long subscriptionId = aeronArchive.startRecording(uri, STREAM_ID, SourceLocation.LOCAL);
 
         for (int i = 0; i < 10; i++)
         {
@@ -147,37 +144,22 @@ public class ArchiveDeleteAndRestartTest
         }
 
         recordedPublication1.close();
+        aeronArchive.stopRecording(subscriptionId);
 
         while (position1 != aeronArchive.getStopPosition(collector.descriptors.get(0).recordingId))
         {
             Tests.yieldingWait("Failed to stop recording");
         }
 
-        final File file = archive.context().archiveDir();
-
         aeronArchive.close();
         archive.close();
-
-        IoUtil.delete(file, true);
+        archive.context().deleteDirectory();
 
         archive = Archive.launch(archiveContext.clone());
-        do
-        {
-            try
-            {
-                aeronArchive = AeronArchive.connect(new AeronArchive.Context().aeron(client));
-                break;
-            }
-            catch (final Exception ignore)
-            {
-                Tests.sleep(1000);
-            }
-        }
-        while (true);
+        aeronArchive = AeronArchive.connect(new AeronArchive.Context().aeron(client));
 
-        final ExclusivePublication recordedPublication2 = client.addExclusivePublication(uri, PUBLISH_STREAM_ID);
-
-        aeronArchive.startRecording(uri, PUBLISH_STREAM_ID, SourceLocation.LOCAL);
+        final ExclusivePublication recordedPublication2 = client.addExclusivePublication(uri, STREAM_ID);
+        aeronArchive.startRecording(uri, STREAM_ID, SourceLocation.LOCAL);
 
         for (int i = 0; i < 10; i++)
         {

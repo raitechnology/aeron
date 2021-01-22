@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,9 +82,9 @@ public final class MediaDriver implements AutoCloseable
     private final Context ctx;
 
     /**
-     * Start Media Driver as a stand-alone process.
+     * Main method for launching the process.
      *
-     * @param args command line arguments
+     * @param args passed to the process.
      */
     public static void main(final String[] args)
     {
@@ -404,7 +404,7 @@ public final class MediaDriver implements AutoCloseable
      * The context will be owned by {@link DriverConductor} after a successful
      * {@link MediaDriver#launch(Context)} and closed via {@link MediaDriver#close()}.
      */
-    public static class Context extends CommonContext
+    public static final class Context extends CommonContext
     {
         private boolean isClosed = false;
         private boolean printConfigurationOnStart = Configuration.printConfigurationOnStart();

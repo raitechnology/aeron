@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,13 +27,16 @@ namespace aeron { namespace command
 {
 
 /**
- * Command message flyweight to ask the driver process to terminate
+ * Command message flyweight to ask the driver process to terminate.
  *
  * @see ControlProtocolEvents
  * <pre>
  *   0                   1                   2                   3
  *   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  |                         Client ID                             |
+ *  |                                                               |
+ *  +---------------------------------------------------------------+
  *  |                       Correlation ID                          |
  *  |                                                               |
  *  +---------------------------------------------------------------+

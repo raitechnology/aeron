@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -686,10 +686,10 @@ private:
 
     inline void checkMaxMessageLength(const util::index_t length) const
     {
-        if (length > m_maxMessageLength)
+        if (AERON_COND_EXPECT((length > m_maxMessageLength), false))
         {
-            throw util::IllegalArgumentException(
-                "encoded message exceeds maxMessageLength of " + std::to_string(m_maxMessageLength) +
+            throw aeron::util::IllegalArgumentException(
+                "message exceeds maxMessageLength=" + std::to_string(m_maxMessageLength) +
                 ", length=" + std::to_string(length), SOURCEINFO);
         }
     }
@@ -698,8 +698,8 @@ private:
     {
         if (AERON_COND_EXPECT((length > m_maxPayloadLength), false))
         {
-            throw util::IllegalArgumentException(
-                "encoded message exceeds maxPayloadLength of " + std::to_string(m_maxPayloadLength) +
+            throw aeron::util::IllegalArgumentException(
+                "message exceeds maxPayloadLength=" + std::to_string(m_maxPayloadLength) +
                 ", length=" + std::to_string(length), SOURCEINFO);
         }
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,9 @@
 #include <stddef.h>
 
 void aeron_format_date(char *str, size_t count, int64_t timestamp);
+
+#define AERON_FORMAT_NUMBER_TO_LOCALE_STR_LEN (32)
+char *aeron_format_number_to_locale(long long value, char *buffer, size_t buffer_len);
 
 #define AERON_FORMAT_HEX_LENGTH(b) ((2 * (b)) + 1)
 void aeron_format_to_hex(char *str, size_t str_length, uint8_t *data, size_t data_len);
@@ -49,6 +52,10 @@ inline uint64_t aeron_fnv_64a_buf(uint8_t *buf, size_t len)
     return hval;
 }
 
+#ifdef _MSC_VER
+#define strdup _strdup
+#endif
+
 /*
  * Splits a null terminated string using the delimiter specified, which is replaced with \0 characters.
  * Each of the tokens is stored in reverse order in the tokens array.
@@ -56,7 +63,7 @@ inline uint64_t aeron_fnv_64a_buf(uint8_t *buf, size_t len)
  * Returns the number of tokens found.  Or a value < 0 for an error:
  * ERANGE: number of tokens is greater than max_tokens.
  */
-int aeron_tokenise(char *input, const char delimiter, const int max_tokens, char **tokens);
+int aeron_tokenise(char *input, char delimiter, int max_tokens, char **tokens);
 
 #if defined(AERON_DLL_EXPORTS)
 #define AERON_EXPORT __declspec(dllexport)
@@ -68,7 +75,7 @@ int aeron_tokenise(char *input, const char delimiter, const int max_tokens, char
 AERON_EXPORT extern char *optarg;
 AERON_EXPORT extern int optind;
 
-int getopt(int argc, char *const argv[], const char *optstring);
+int getopt(int argc, char *const argv[], const char *opt_string);
 #endif
 
 #endif //AERON_STRUTIL_H

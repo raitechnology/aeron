@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
 
 import static io.aeron.cluster.service.ClusteredServiceContainer.Configuration.SNAPSHOT_TYPE_ID;
 
-class ServiceSnapshotLoader implements ControlledFragmentHandler
+final class ServiceSnapshotLoader implements ControlledFragmentHandler
 {
     private static final int FRAGMENT_LIMIT = 10;
 

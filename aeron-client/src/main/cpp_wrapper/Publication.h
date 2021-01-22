@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,9 +28,7 @@
 #include "concurrent/logbuffer/TermAppender.h"
 #include "concurrent/status/UnsafeBufferPosition.h"
 #include "concurrent/status/StatusIndicatorReader.h"
-#include "concurrent/status/LocalSocketAddressStatus.h"
 #include "util/Exceptions.h"
-#include "util/Export.h"
 
 #include "aeronc.h"
 
@@ -64,13 +62,15 @@ using AsyncDestination = aeron_async_destination_t;
  * @see Aeron#addPublication
  * @see Aeron#findPublication
  */
-class CLIENT_EXPORT Publication
+class Publication
 {
 public:
 
     /// @cond HIDDEN_SYMBOLS
-    Publication(aeron_t *aeron, aeron_publication_t *publication, CountersReader &countersReader) :
-        m_aeron(aeron), m_publication(publication), m_countersReader(countersReader), m_channel()
+    Publication(aeron_t *aeron, aeron_publication_t *publication) :
+        m_aeron(aeron),
+        m_publication(publication),
+        m_channel()
     {
         if (aeron_publication_constants(m_publication, &m_constants) < 0)
         {
@@ -325,7 +325,21 @@ public:
      */
     std::vector<std::string> localSocketAddresses() const
     {
-        return LocalSocketAddressStatus::findAddresses(m_countersReader, channelStatus(), channelStatusId());
+        std::vector<std::string> localAddresses;
+        std::uint8_t buffer[AERON_CLIENT_MAX_LOCAL_ADDRESS_STR_LEN];
+        // Publications only have a single local address.
+        aeron_iovec_t iov;
+        iov.iov_base = buffer;
+        iov.iov_len = sizeof(buffer);
+
+        if (aeron_publication_local_sockaddrs(m_publication, &iov, 1) < 0)
+        {
+            AERON_MAP_ERRNO_TO_SOURCED_EXCEPTION_AND_THROW;
+        }
+
+        localAddresses.push_back(std::string(reinterpret_cast<char *>(buffer)));
+
+        return localAddresses;
     }
 
     /**
@@ -406,7 +420,7 @@ public:
             {
                 throw aeron::util::IllegalStateException(
                     "length overflow: " + std::to_string(length) + " + " + std::to_string(it->capacity()) +
-                        " > " + std::to_string(length + it->capacity()),
+                    " > " + std::to_string(length + it->capacity()),
                     SOURCEINFO);
             }
 
@@ -642,7 +656,6 @@ private:
     aeron_t *m_aeron = nullptr;
     aeron_publication_t *m_publication = nullptr;
     aeron_publication_constants_t m_constants = {};
-    CountersReader &m_countersReader;
     std::string m_channel;
     std::unordered_map<std::int64_t, AsyncDestination *> m_pendingDestinations;
     std::recursive_mutex m_adminLock;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,11 @@ public class ReplayedBasicSubscriber
     private static final String CHANNEL = SampleConfiguration.CHANNEL;
     private static final int FRAGMENT_COUNT_LIMIT = SampleConfiguration.FRAGMENT_COUNT_LIMIT;
 
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process.
+     */
     public static void main(final String[] args)
     {
         System.out.println("Subscribing to " + CHANNEL + " on stream id " + STREAM_ID);

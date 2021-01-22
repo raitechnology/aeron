@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -255,8 +255,7 @@ final class ClientCommandAdapter implements MessageHandler
                 default:
                 {
                     final ControlProtocolException ex = new ControlProtocolException(
-                        ErrorCode.UNKNOWN_COMMAND_TYPE_ID,
-                        "command typeId=" + msgTypeId + " unknown, correlationId=" + correlationId);
+                        ErrorCode.UNKNOWN_COMMAND_TYPE_ID, "command typeId=" + msgTypeId);
 
                     clientProxy.onError(correlationId, ex.errorCode(), ex.getMessage());
                     recordError(ex);

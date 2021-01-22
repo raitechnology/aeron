@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -132,8 +132,8 @@ class DataCollectorTest
 
             dataCollector.dumpData(testInfo);
 
-            final String testClass = testInfo.getTestClass().get().getName();
-            final String testMethod = testInfo.getTestMethod().get().getName();
+            final String testClass = testInfo.getTestClass().orElseThrow(IllegalStateException::new).getName();
+            final String testMethod = testInfo.getTestMethod().orElseThrow(IllegalStateException::new).getName();
             final Path destination = rootDir.resolve(testClass + "-" + testMethod);
 
             assertTrue(exists(destination));

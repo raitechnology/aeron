@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -340,7 +340,7 @@ public:
     }
 
 private:
-    typedef std::array<std::uint8_t, 512> driver_proxy_command_buffer_t;
+    typedef std::array<std::uint8_t, 4096> driver_proxy_command_buffer_t;
 
     ManyToOneRingBuffer &m_toDriverCommandBuffer;
     std::int64_t m_clientId;

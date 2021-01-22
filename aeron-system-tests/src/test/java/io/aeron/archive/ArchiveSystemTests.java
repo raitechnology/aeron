@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,8 @@ package io.aeron.archive;
 import io.aeron.FragmentAssembler;
 import io.aeron.Publication;
 import io.aeron.Subscription;
-import io.aeron.archive.client.RecordingSignalAdapter;
+import io.aeron.archive.client.*;
+import io.aeron.archive.codecs.ControlResponseCode;
 import io.aeron.archive.codecs.RecordingSignal;
 import io.aeron.archive.status.RecordingPos;
 import io.aeron.logbuffer.FragmentHandler;
@@ -34,9 +35,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ArchiveSystemTests
 {
-    static final long MAX_CATALOG_ENTRIES = 128;
+    static final long CATALOG_CAPACITY = 128 * 1024;
     static final int TERM_LENGTH = LogBufferDescriptor.TERM_MIN_LENGTH;
     static final int FRAGMENT_LIMIT = 10;
+
+    static final ControlEventListener ERROR_CONTROL_LISTENER =
+        (controlSessionId, correlationId, relevantId, code, errorMessage) ->
+        {
+            if (code == ControlResponseCode.ERROR)
+            {
+                throw new ArchiveException(errorMessage, (int)relevantId, correlationId);
+            }
+        };
 
     static int awaitRecordingCounterId(final CountersReader counters, final int sessionId)
     {

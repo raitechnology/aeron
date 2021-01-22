@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
     private final long unblockTimeoutNs;
     private final long untetheredWindowLimitTimeoutNs;
     private final long untetheredRestingTimeoutNs;
+    private final String channel;
     private final long tag;
     private final int sessionId;
     private final int streamId;
@@ -79,6 +80,7 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
 
     IpcPublication(
         final long registrationId,
+        final String channel,
         final MediaDriver.Context ctx,
         final long tag,
         final int sessionId,
@@ -90,6 +92,7 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
         final boolean isExclusive)
     {
         this.registrationId = registrationId;
+        this.channel = channel;
         this.tag = tag;
         this.sessionId = sessionId;
         this.streamId = streamId;
@@ -118,12 +121,32 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
         timeOfLastConsumerPositionUpdateNs = ctx.cachedNanoClock().nanoTime();
     }
 
-    int sessionId()
+    /**
+     * Channel URI string for this publication.
+     *
+     * @return channel URI string for this publication.
+     */
+    public String channel()
+    {
+        return channel;
+    }
+
+    /**
+     * Session id allocated to this stream.
+     *
+     * @return session id allocated to this stream.
+     */
+    public int sessionId()
     {
         return sessionId;
     }
 
-    int streamId()
+    /**
+     * Stream id within the channel.
+     *
+     * @return stream id within the channel.
+     */
+    public int streamId()
     {
         return streamId;
     }
@@ -190,7 +213,7 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
 
     public void removeSubscriber(final SubscriptionLink subscriptionLink, final ReadablePosition subscriberPosition)
     {
-        consumerPosition = Math.max(consumerPosition, subscriberPosition.getVolatile());
+        updatePublisherLimit();
         subscriberPositions = ArrayUtil.remove(subscriberPositions, subscriberPosition);
         subscriberPosition.close();
 
@@ -345,6 +368,11 @@ public final class IpcPublication implements DriverManagedResource, Subscribable
     State state()
     {
         return state;
+    }
+
+    boolean isAcceptingSubscriptions()
+    {
+        return State.ACTIVE == state || (State.DRAINING == state && !isDrained(producerPosition()));
     }
 
     private void checkUntetheredSubscriptions(final long nowNs, final DriverConductor conductor)

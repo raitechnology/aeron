@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,8 +83,15 @@ public:
         }
 
         m_publication = std::unique_ptr<Publication>(new Publication(
-            m_conductor, CHANNEL, CORRELATION_ID, ORIGINAL_REGISTRATION_ID,
-            STREAM_ID, SESSION_ID, m_publicationLimit, ChannelEndpointStatus::NO_ID_ALLOCATED, m_logBuffers));
+            m_conductor,
+            CHANNEL,
+            CORRELATION_ID,
+            ORIGINAL_REGISTRATION_ID,
+            STREAM_ID,
+            SESSION_ID,
+            m_publicationLimit,
+            ChannelEndpointStatus::NO_ID_ALLOCATED,
+            m_logBuffers));
     }
 
 protected:

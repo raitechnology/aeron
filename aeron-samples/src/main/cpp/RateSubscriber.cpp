@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,6 +97,8 @@ int main(int argc, char **argv)
 
     signal(SIGINT, sigIntHandler);
 
+    std::shared_ptr<std::thread> rateReporterThread;
+
     try
     {
         Settings settings = parseCmdLine(cp, argc, argv);
@@ -147,22 +149,28 @@ int main(int argc, char **argv)
         RateReporter rateReporter(std::chrono::seconds(1), printRate);
         FragmentAssembler fragmentAssembler(rateReporterHandler(rateReporter));
         fragment_handler_t handler = fragmentAssembler.handler();
+        Subscription *subscriptionPtr = subscription.get();
 
-        std::thread rateReporterThread(
+        aeron::util::OnScopeExit tidy(
             [&]()
             {
-                rateReporter.run();
+                rateReporter.halt();
+
+                if (nullptr != rateReporterThread && rateReporterThread->joinable())
+                {
+                    rateReporterThread->join();
+                    rateReporterThread = nullptr;
+                }
             });
+
+        rateReporterThread = std::make_shared<std::thread>([&](){ rateReporter.run(); });
 
         while (running)
         {
-            idleStrategy.idle(subscription->poll(handler, settings.fragmentCountLimit));
+            idleStrategy.idle(subscriptionPtr->poll(handler, settings.fragmentCountLimit));
         }
 
         std::cout << "Shutting down...\n";
-
-        rateReporter.halt();
-        rateReporterThread.join();
     }
     catch (const CommandOptionException &e)
     {

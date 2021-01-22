@@ -1,4 +1,4 @@
-# Copyright 2014-2020 Real Logic Limited.
+# Copyright 2014-2021 Real Logic Limited.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -138,7 +138,9 @@ SET(C_CLIENT_SOURCE
     ${AERON_C_CLIENT_SOURCE_PATH}/concurrent/aeron_term_scanner.c
     ${AERON_C_CLIENT_SOURCE_PATH}/concurrent/aeron_term_unblocker.c
     ${AERON_C_CLIENT_SOURCE_PATH}/concurrent/aeron_thread.c
+    ${AERON_C_CLIENT_SOURCE_PATH}/status/aeron_local_sockaddr.c
     ${AERON_C_CLIENT_SOURCE_PATH}/protocol/aeron_udp_protocol.c
+    ${AERON_C_CLIENT_SOURCE_PATH}/reports/aeron_loss_reporter.c
     ${AERON_C_CLIENT_SOURCE_PATH}/util/aeron_arrayutil.c
     ${AERON_C_CLIENT_SOURCE_PATH}/util/aeron_bitutil.c
     ${AERON_C_CLIENT_SOURCE_PATH}/util/aeron_clock.c
@@ -152,10 +154,12 @@ SET(C_CLIENT_SOURCE
     ${AERON_C_CLIENT_SOURCE_PATH}/util/aeron_parse_util.c
     ${AERON_C_CLIENT_SOURCE_PATH}/util/aeron_properties_util.c
     ${AERON_C_CLIENT_SOURCE_PATH}/util/aeron_strutil.c
+    ${AERON_C_CLIENT_SOURCE_PATH}/uri/aeron_uri.c
     ${AERON_C_CLIENT_SOURCE_PATH}/aeron_agent.c
     ${AERON_C_CLIENT_SOURCE_PATH}/aeron_alloc.c
     ${AERON_C_CLIENT_SOURCE_PATH}/aeron_client.c
     ${AERON_C_CLIENT_SOURCE_PATH}/aeron_client_conductor.c
+    ${AERON_C_CLIENT_SOURCE_PATH}/aeron_cnc.c
     ${AERON_C_CLIENT_SOURCE_PATH}/aeron_cnc_file_descriptor.c
     ${AERON_C_CLIENT_SOURCE_PATH}/aeron_context.c
     ${AERON_C_CLIENT_SOURCE_PATH}/aeron_counter.c
@@ -203,6 +207,7 @@ set(C_CLIENT_HEADERS
     ${AERON_C_CLIENT_SOURCE_PATH}/concurrent/aeron_term_unblocker.h
     ${AERON_C_CLIENT_SOURCE_PATH}/concurrent/aeron_thread.h
     ${AERON_C_CLIENT_SOURCE_PATH}/protocol/aeron_udp_protocol.h
+    ${AERON_C_CLIENT_SOURCE_PATH}/reports/aeron_loss_reporter.h
     ${AERON_C_CLIENT_SOURCE_PATH}/util/aeron_arrayutil.h
     ${AERON_C_CLIENT_SOURCE_PATH}/util/aeron_bitutil.h
     ${AERON_C_CLIENT_SOURCE_PATH}/util/aeron_clock.h
@@ -248,8 +253,7 @@ SET(SOURCE
     media/aeron_udp_channel_transport_loss.c
     media/aeron_udp_destination_tracker.c
     media/aeron_udp_transport_poller.c
-    reports/aeron_loss_reporter.c
-    uri/aeron_uri.c
+    uri/aeron_driver_uri.c
     aeron_congestion_control.c
     aeron_csv_table_name_resolver.c
     aeron_data_packet_dispatcher.c
@@ -288,8 +292,7 @@ SET(HEADERS
     media/aeron_udp_channel_transport_loss.h
     media/aeron_udp_destination_tracker.h
     media/aeron_udp_transport_poller.h
-    reports/aeron_loss_reporter.h
-    uri/aeron_uri.h
+    uri/aeron_driver_uri.h
     aeron_congestion_control.h
     aeron_data_packet_dispatcher.h
     aeron_driver.h
@@ -317,18 +320,15 @@ SET(HEADERS
 
 add_library(aeron_driver SHARED ${SOURCE} ${HEADERS})
 target_include_directories(aeron_driver
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${AERON_C_CLIENT_SOURCE_PATH}
-    )
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${AERON_C_CLIENT_SOURCE_PATH})
 
 add_library(aeron_driver_static STATIC ${SOURCE} ${HEADERS})
 target_include_directories(aeron_driver_static
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${AERON_C_CLIENT_SOURCE_PATH}
-    )
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${AERON_C_CLIENT_SOURCE_PATH})
 
 add_executable(aeronmd aeronmd.c)
 target_include_directories(aeronmd
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${AERON_C_CLIENT_SOURCE_PATH}
-    )
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${AERON_C_CLIENT_SOURCE_PATH})
 
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DDISABLE_BOUNDS_CHECKS")
 

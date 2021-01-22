@@ -1,8 +1,6 @@
 Aeron
 =====
 
-[![Gitter](https://img.shields.io/gitter/room/gitterHQ/gitter.svg)](https://gitter.im/real-logic/Aeron?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge) To chat with other Aeron users and contributors.
-
 [![GitHub](https://img.shields.io/github/license/real-logic/Aeron.svg)](https://github.com/real-logic/aeron/blob/master/LICENSE)
 [![Javadocs](https://www.javadoc.io/badge/io.aeron/aeron-all.svg)](https://www.javadoc.io/doc/io.aeron/aeron-all)
 
@@ -88,6 +86,7 @@ You require the following to build the C++ API for Aeron:
 * C++11 supported compiler for the supported platform
 * C11 supported compiler for the supported platform
 * Requirements to build [HdrHistogram_c](https://github.com/HdrHistogram/HdrHistogram_c). 
+* JDK 8 or later to compile the SBE schema definitions used by the archive client.
 
 __Note__: Aeron support is available for 64-bit Linux, OSX, and Windows. 
 
@@ -204,7 +203,7 @@ Troubleshooting
 
 License (See LICENSE file for full license)
 -------------------------------------------
-Copyright 2014-2020 Real Logic Limited
+Copyright 2014-2021 Real Logic Limited.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

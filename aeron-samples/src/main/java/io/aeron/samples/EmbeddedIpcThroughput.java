@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,13 @@ public class EmbeddedIpcThroughput
     private static final String CHANNEL = CommonContext.IPC_CHANNEL;
     private static final int STREAM_ID = SampleConfiguration.STREAM_ID;
 
-    public static void main(final String[] args) throws Exception
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process.
+     * @throws InterruptedException if the thread is interrupted while waiting on the threads to join.
+     */
+    public static void main(final String[] args) throws InterruptedException
     {
         loadPropertiesFiles(args);
 

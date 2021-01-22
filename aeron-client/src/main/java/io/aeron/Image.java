@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ import static java.nio.ByteOrder.LITTLE_ENDIAN;
  * <p>
  * <b>Note:</b>Images are not threadsafe and should not be shared between subscribers.
  */
-public class Image
+public final class Image
 {
     private final long correlationId;
     private final long joinPosition;
@@ -363,24 +363,24 @@ public class Image
                     continue;
                 }
 
+                ++fragmentsRead;
                 header.offset(frameOffset);
 
                 final Action action = handler.onFragment(
                     termBuffer, frameOffset + HEADER_LENGTH, length - HEADER_LENGTH, header);
 
-                if (action == ABORT)
+                if (ABORT == action)
                 {
+                    --fragmentsRead;
                     offset -= alignedLength;
                     break;
                 }
 
-                ++fragmentsRead;
-
-                if (action == BREAK)
+                if (BREAK == action)
                 {
                     break;
                 }
-                else if (action == COMMIT)
+                if (COMMIT == action)
                 {
                     initialPosition += (offset - initialOffset);
                     initialOffset = offset;
@@ -453,9 +453,9 @@ public class Image
                     continue;
                 }
 
+                ++fragmentsRead;
                 header.offset(frameOffset);
                 handler.onFragment(termBuffer, frameOffset + HEADER_LENGTH, length - HEADER_LENGTH, header);
-                ++fragmentsRead;
             }
         }
         catch (final Throwable t)
@@ -524,24 +524,24 @@ public class Image
                     continue;
                 }
 
+                ++fragmentsRead;
                 header.offset(frameOffset);
 
                 final Action action = handler.onFragment(
                     termBuffer, frameOffset + HEADER_LENGTH, length - HEADER_LENGTH, header);
 
-                if (action == ABORT)
+                if (ABORT == action)
                 {
+                    --fragmentsRead;
                     offset -= alignedLength;
                     break;
                 }
 
-                ++fragmentsRead;
-
-                if (action == BREAK)
+                if (BREAK == action)
                 {
                     break;
                 }
-                else if (action == COMMIT)
+                if (COMMIT == action)
                 {
                     initialPosition += (offset - initialOffset);
                     initialOffset = offset;
@@ -629,7 +629,7 @@ public class Image
                 final Action action = handler.onFragment(
                     termBuffer, frameOffset + HEADER_LENGTH, length - HEADER_LENGTH, header);
 
-                if (action == ABORT)
+                if (ABORT == action)
                 {
                     break;
                 }
@@ -642,7 +642,7 @@ public class Image
                     resultingPosition = position;
                 }
 
-                if (action == BREAK)
+                if (BREAK == action)
                 {
                     break;
                 }

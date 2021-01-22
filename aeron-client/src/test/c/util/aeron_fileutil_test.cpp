@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -98,4 +98,30 @@ TEST_F(FileUtilTest, rawLogFreeShouldNotDeleteFileIfUnmapFails)
     mapped_raw_log.mapped_file.addr = mapped_addr;
     ASSERT_EQ(true, aeron_raw_log_free(&mapped_raw_log, file));
     EXPECT_EQ((int64_t)-1, aeron_file_length(file));
+}
+
+TEST_F(FileUtilTest, resolveShouldConcatPaths)
+{
+    const char *parent = "this_is_the_parent";
+    const char *child = "this_is_the_child";
+#ifdef _MSC_VER
+    const char *expected = "this_is_the_parent\\this_is_the_child";
+#else
+    const char *expected = "this_is_the_parent/this_is_the_child";
+#endif
+    char result[AERON_MAX_PATH];
+
+    ASSERT_LT(0, aeron_file_resolve(parent, child, result, sizeof(result)));
+    ASSERT_STREQ(expected, result);
+}
+
+TEST_F(FileUtilTest, resolveShouldReportTruncatedPaths)
+{
+    const char *parent = "this_is_the_parent";
+    const char *child = "this_is_the_child";
+    char result[10];
+
+    ASSERT_EQ(-1, aeron_file_resolve(parent, child, result, sizeof(result)));
+    ASSERT_EQ(EINVAL, aeron_errcode());
+    ASSERT_EQ('\0', result[sizeof(result) - 1]);
 }

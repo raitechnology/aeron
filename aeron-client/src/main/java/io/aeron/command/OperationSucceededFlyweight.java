@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ public class OperationSucceededFlyweight
      *
      * @param buffer to wrap.
      * @param offset at which the message begins.
-     * @return for fluent API
+     * @return this for a fluent API.
      */
     public final OperationSucceededFlyweight wrap(final MutableDirectBuffer buffer, final int offset)
     {
@@ -72,7 +72,7 @@ public class OperationSucceededFlyweight
      * Set the correlation id field.
      *
      * @param correlationId field value.
-     * @return this for a fluent API
+     * @return this for a fluent API.
      */
     public OperationSucceededFlyweight correlationId(final long correlationId)
     {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,10 +25,11 @@ import io.aeron.cluster.service.ClusteredService;
 import io.aeron.cluster.service.ClusteredServiceContainer;
 import io.aeron.driver.MediaDriver;
 import io.aeron.driver.ThreadingMode;
-import io.aeron.exceptions.TimeoutException;
 import io.aeron.logbuffer.FragmentHandler;
 import io.aeron.logbuffer.Header;
 import io.aeron.test.Tests;
+import io.aeron.test.cluster.ClusterTests;
+import io.aeron.test.cluster.StubClusteredService;
 import org.agrona.CloseHelper;
 import org.agrona.DirectBuffer;
 import org.agrona.ExpandableArrayBuffer;
@@ -53,7 +54,7 @@ import static org.mockito.Mockito.*;
 
 public class ClusterNodeRestartTest
 {
-    private static final long MAX_CATALOG_ENTRIES = 1024;
+    private static final long CATALOG_CAPACITY = 1024 * 1024;
     private static final int MESSAGE_LENGTH = SIZE_OF_INT;
     private static final int TIMER_MESSAGE_LENGTH = SIZE_OF_INT + SIZE_OF_LONG + SIZE_OF_LONG;
     private static final int MESSAGE_VALUE_OFFSET = 0;
@@ -628,19 +629,8 @@ public class ClusterNodeRestartTest
 
     private void connectClient()
     {
-        while (true)
-        {
-            try
-            {
-                CloseHelper.close(aeronCluster);
-                aeronCluster = AeronCluster.connect();
-                return;
-            }
-            catch (final TimeoutException ex)
-            {
-                System.out.println("warning: " + ex.getMessage());
-            }
-        }
+        CloseHelper.close(aeronCluster);
+        aeronCluster = AeronCluster.connect();
     }
 
     private void launchClusteredMediaDriver(final boolean initialLaunch)
@@ -653,7 +643,7 @@ public class ClusterNodeRestartTest
                 .errorHandler(ClusterTests.errorHandler(0))
                 .dirDeleteOnStart(true),
             new Archive.Context()
-                .maxCatalogEntries(MAX_CATALOG_ENTRIES)
+                .catalogCapacity(CATALOG_CAPACITY)
                 .recordingEventsEnabled(false)
                 .threadingMode(ArchiveThreadingMode.SHARED)
                 .deleteArchiveOnStart(initialLaunch),

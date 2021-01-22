@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,8 +25,8 @@ import io.aeron.driver.Configuration;
 import io.aeron.driver.MediaDriver;
 import io.aeron.driver.ThreadingMode;
 import io.aeron.logbuffer.FragmentHandler;
-import io.aeron.test.MediaDriverTestWatcher;
-import io.aeron.test.TestMediaDriver;
+import io.aeron.test.driver.MediaDriverTestWatcher;
+import io.aeron.test.driver.TestMediaDriver;
 import io.aeron.test.Tests;
 import org.agrona.CloseHelper;
 import org.agrona.ExpandableArrayBuffer;
@@ -114,7 +114,7 @@ public class ExtendRecordingTest
 
         archive = Archive.launch(
             new Archive.Context()
-                .maxCatalogEntries(ArchiveSystemTests.MAX_CATALOG_ENTRIES)
+                .catalogCapacity(ArchiveSystemTests.CATALOG_CAPACITY)
                 .aeronDirectoryName(aeronDirectoryName)
                 .archiveDir(archiveDir)
                 .errorHandler(Tests::onError)

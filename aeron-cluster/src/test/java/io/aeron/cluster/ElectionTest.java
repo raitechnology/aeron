@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package io.aeron.cluster;
 import io.aeron.*;
 import io.aeron.cluster.service.Cluster;
 import io.aeron.cluster.service.ClusterMarkFile;
+import io.aeron.test.cluster.TestClusterClock;
 import org.agrona.collections.Int2ObjectHashMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,7 +28,6 @@ import org.mockito.InOrder;
 import org.mockito.Mockito;
 
 import java.util.Random;
-import java.util.concurrent.TimeUnit;
 
 import static io.aeron.archive.client.AeronArchive.NULL_POSITION;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
@@ -40,16 +40,17 @@ public class ElectionTest
     private static final int LOG_SESSION_ID = 777;
     private final Aeron aeron = mock(Aeron.class);
     private final Counter electionStateCounter = mock(Counter.class);
+    private final Subscription subscription = mock(Subscription.class);
+    private final Image logImage = mock(Image.class);
     private final RecordingLog recordingLog = mock(RecordingLog.class);
     private final ClusterMarkFile clusterMarkFile = mock(ClusterMarkFile.class);
-    private final ConsensusAdapter consensusAdapter = mock(ConsensusAdapter.class);
     private final ConsensusPublisher consensusPublisher = mock(ConsensusPublisher.class);
     private final ConsensusModuleAgent consensusModuleAgent = mock(ConsensusModuleAgent.class);
 
     private final ConsensusModule.Context ctx = new ConsensusModule.Context()
         .aeron(aeron)
         .recordingLog(recordingLog)
-        .clusterClock(new TestClusterClock(TimeUnit.MILLISECONDS))
+        .clusterClock(new TestClusterClock(NANOSECONDS))
         .random(new Random())
         .electionStateCounter(electionStateCounter)
         .clusterMarkFile(clusterMarkFile);
@@ -58,9 +59,11 @@ public class ElectionTest
     public void before()
     {
         when(aeron.addCounter(anyInt(), anyString())).thenReturn(electionStateCounter);
+        when(aeron.addSubscription(anyString(), anyInt())).thenReturn(subscription);
         when(consensusModuleAgent.logRecordingId()).thenReturn(RECORDING_ID);
-        when(consensusModuleAgent.addNewLogPublication()).thenReturn(LOG_SESSION_ID);
+        when(consensusModuleAgent.addLogPublication()).thenReturn(LOG_SESSION_ID);
         when(clusterMarkFile.candidateTermId()).thenReturn((long)Aeron.NULL_VALUE);
+        when(subscription.imageBySessionId(anyInt())).thenReturn(logImage);
     }
 
     @Test
@@ -83,7 +86,7 @@ public class ElectionTest
         verify(clusterMarkFile).candidateTermId();
         verify(consensusModuleAgent).becomeLeader(eq(newLeadershipTermId), eq(logPosition), anyInt(), eq(true));
         verify(recordingLog).isUnknown(newLeadershipTermId);
-        verify(recordingLog).appendTerm(RECORDING_ID, newLeadershipTermId, logPosition, NANOSECONDS.toMillis(t1));
+        verify(recordingLog).appendTerm(RECORDING_ID, newLeadershipTermId, logPosition, t1);
         verify(electionStateCounter).setOrdered(ElectionState.LEADER_READY.code());
     }
 
@@ -143,38 +146,39 @@ public class ElectionTest
 
         final long t5 = t4 + 1;
         election.doWork(t5);
-        election.doWork(t5);
-
-        verify(consensusModuleAgent).becomeLeader(eq(candidateTermId), eq(logPosition), anyInt(), eq(true));
-        verify(recordingLog).appendTerm(RECORDING_ID, candidateTermId, logPosition, NANOSECONDS.toMillis(t5));
-        verify(electionStateCounter).setOrdered(ElectionState.LEADER_READY.code());
-
-        assertEquals(NULL_POSITION, clusterMembers[1].logPosition());
-        assertEquals(NULL_POSITION, clusterMembers[2].logPosition());
-        assertEquals(candidateTermId, election.leadershipTermId());
-
-        final long t6 = t5 + ctx.leaderHeartbeatIntervalNs();
-        when(recordingLog.getTermTimestamp(candidateTermId)).thenReturn(t6);
-
-        election.doWork(t6);
         verify(consensusPublisher).newLeadershipTerm(
             clusterMembers[1].publication(),
             leadershipTermId,
             logPosition,
             candidateTermId,
             logPosition,
-            t6,
+            t5,
             candidateMember.id(),
-            LOG_SESSION_ID, election.isLeaderStartup());
+            LOG_SESSION_ID,
+            election.isLeaderStartup());
         verify(consensusPublisher).newLeadershipTerm(
             clusterMembers[2].publication(),
             leadershipTermId,
             logPosition,
             candidateTermId,
             logPosition,
-            t6,
+            t5,
             candidateMember.id(),
-            LOG_SESSION_ID, election.isLeaderStartup());
+            LOG_SESSION_ID,
+            election.isLeaderStartup());
+
+        election.doWork(t5);
+
+        verify(consensusModuleAgent).becomeLeader(eq(candidateTermId), eq(logPosition), anyInt(), eq(true));
+        verify(recordingLog).appendTerm(RECORDING_ID, candidateTermId, logPosition, t5);
+        verify(electionStateCounter).setOrdered(ElectionState.LEADER_READY.code());
+
+        assertEquals(NULL_POSITION, clusterMembers[1].logPosition());
+        assertEquals(NULL_POSITION, clusterMembers[2].logPosition());
+        assertEquals(candidateTermId, election.leadershipTermId());
+
+        final long t6 = t5 + 1;
+        election.doWork(t6);
         verify(electionStateCounter).setOrdered(ElectionState.LEADER_READY.code());
 
         when(consensusModuleAgent.electionComplete()).thenReturn(true);
@@ -222,18 +226,23 @@ public class ElectionTest
             leadershipTermId, logPosition, candidateTermId, logPosition, t2, candidateId, logSessionId, false);
         verify(electionStateCounter).setOrdered(ElectionState.FOLLOWER_REPLAY.code());
 
-        when(consensusModuleAgent.createAndRecordLogSubscriptionAsFollower(anyString()))
-            .thenReturn(mock(Subscription.class));
         final long t3 = 3;
         election.doWork(t3);
-        election.doWork(t3);
+        verify(electionStateCounter).setOrdered(ElectionState.FOLLOWER_LOG_INIT.code());
+
+        final long t4 = 4;
+        election.doWork(t4);
+        verify(electionStateCounter).setOrdered(ElectionState.FOLLOWER_LOG_AWAIT.code());
+
+        final long t5 = 5;
+        election.doWork(t5);
         verify(electionStateCounter).setOrdered(ElectionState.FOLLOWER_READY.code());
 
         when(consensusPublisher.appendPosition(any(), anyLong(), anyLong(), anyInt())).thenReturn(Boolean.TRUE);
         when(consensusModuleAgent.electionComplete()).thenReturn(true);
 
-        final long t4 = 4;
-        election.doWork(t4);
+        final long t6 = 6;
+        election.doWork(t6);
         final InOrder inOrder = inOrder(consensusPublisher, consensusModuleAgent, electionStateCounter);
         inOrder.verify(consensusPublisher).appendPosition(
             clusterMembers[candidateId].publication(), candidateTermId, logPosition, followerMember.id());
@@ -268,30 +277,6 @@ public class ElectionTest
         final long t3 = t2 + 1;
         election.doWork(t3);
         verify(electionStateCounter).setOrdered(ElectionState.NOMINATE.code());
-    }
-
-    @Test
-    public void shouldCanvassMembersInUnSuccessfulLeadershipBid()
-    {
-        final long leadershipTermId = Aeron.NULL_VALUE;
-        final long logPosition = 0;
-        final ClusterMember[] clusterMembers = prepareClusterMembers();
-        final ClusterMember followerMember = clusterMembers[0];
-
-        final Election election = newElection(leadershipTermId, logPosition, clusterMembers, followerMember);
-
-        final long t1 = 1;
-        election.doWork(t1);
-        verify(electionStateCounter).setOrdered(ElectionState.CANVASS.code());
-
-        final long t2 = t1 + ctx.electionStatusIntervalNs();
-        election.doWork(t2);
-
-        election.onCanvassPosition(leadershipTermId + 1, logPosition, 1);
-        election.onCanvassPosition(leadershipTermId, logPosition, 2);
-
-        final long t3 = t2 + 1;
-        election.doWork(t3);
     }
 
     @Test
@@ -385,17 +370,15 @@ public class ElectionTest
 
     @ParameterizedTest
     @CsvSource(value = {"true,true", "true,false", "false,false", "false,true"})
-    public void shouldBaseStartupValueOnLeader(final boolean leaderIsStart, final boolean nodeIsStart)
+    public void shouldBaseStartupValueOnLeader(final boolean isLeaderStart, final boolean isNodeStart)
     {
         final long leadershipTermId = Aeron.NULL_VALUE;
         final long logPosition = 0;
         final ClusterMember[] clusterMembers = prepareClusterMembers();
         final ClusterMember followerMember = clusterMembers[1];
 
-        when(consensusModuleAgent.createAndRecordLogSubscriptionAsFollower(any())).thenReturn(mock(Subscription.class));
-
         final Election election = newElection(
-            nodeIsStart, leadershipTermId, logPosition, clusterMembers, followerMember);
+            isNodeStart, leadershipTermId, logPosition, clusterMembers, followerMember);
 
         final long t1 = 1;
         election.doWork(t1);
@@ -404,13 +387,16 @@ public class ElectionTest
         final long t2 = t1 + 1;
         final int leaderMemberId = clusterMembers[0].id();
         election.onNewLeadershipTerm(
-            leadershipTermId, logPosition, leadershipTermId, logPosition, t2, leaderMemberId, 0, leaderIsStart);
+            leadershipTermId, logPosition, leadershipTermId, logPosition, t2, leaderMemberId, 0, isLeaderStart);
         election.doWork(t2);
 
         final long t3 = t2 + 1;
         election.doWork(t3);
 
-        verify(consensusModuleAgent).awaitServicesReady(any(), anyInt(), anyLong(), eq(leaderIsStart));
+        final long t4 = t3 + 1;
+        election.doWork(t4);
+
+        verify(consensusModuleAgent).followLog(logImage, isLeaderStart);
     }
 
     @Test
@@ -612,7 +598,6 @@ public class ElectionTest
             clusterMembers,
             idToClusterMemberMap,
             thisMember,
-            consensusAdapter,
             consensusPublisher,
             ctx,
             consensusModuleAgent);
@@ -636,7 +621,6 @@ public class ElectionTest
             clusterMembers,
             clusterMemberByIdMap,
             thisMember,
-            consensusAdapter,
             consensusPublisher,
             ctx,
             consensusModuleAgent);

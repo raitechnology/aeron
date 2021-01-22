@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014-2020 Real Logic Limited.
+ *  Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ import static org.agrona.SystemUtil.getSizeAsInt;
  * Note: This class is threadsafe but the lock can be elided for single threaded access via {@link Context#lock(Lock)}
  * being set to {@link NoOpLock}.
  */
-public class AeronArchive implements AutoCloseable
+public final class AeronArchive implements AutoCloseable
 {
     /**
      * Represents a timestamp that has not been set. Can be used when the time is not known.
@@ -1390,6 +1390,10 @@ public class AeronArchive implements AutoCloseable
      * Truncate a stopped recording to a given position that is less than the stopped position. The provided position
      * must be on a fragment boundary. Truncating a recording to the start position effectively deletes the recording.
      *
+     * If the truncate operation will result in deleting segments then this will occur asynchronously. Before extending
+     * a truncated recording which has segments being asynchronously being deleted then you should await completion
+     * on the {@link io.aeron.archive.codecs.RecordingSignal#DELETE}.
+     *
      * @param recordingId of the stopped recording to be truncated.
      * @param position    to which the recording will be truncated.
      */
@@ -1406,6 +1410,36 @@ public class AeronArchive implements AutoCloseable
             if (!archiveProxy.truncateRecording(recordingId, position, lastCorrelationId, controlSessionId))
             {
                 throw new ArchiveException("failed to send truncate recording request");
+            }
+
+            pollForResponse(lastCorrelationId);
+        }
+        finally
+        {
+            lock.unlock();
+        }
+    }
+
+
+    /**
+     * Purge a stopped recording, i.e. mark recording as {@link io.aeron.archive.codecs.RecordingState#INVALID}
+     * and delete the corresponding segment files. The space in the Catalog will be reclaimed upon compaction.
+     *
+     * @param recordingId of the stopped recording to be purged.
+     */
+    public void purgeRecording(final long recordingId)
+    {
+        lock.lock();
+        try
+        {
+            ensureOpen();
+            ensureNotReentrant();
+
+            lastCorrelationId = aeron.nextCorrelationId();
+
+            if (!archiveProxy.purgeRecording(recordingId, lastCorrelationId, controlSessionId))
+            {
+                throw new ArchiveException("failed to send invalidate recording request");
             }
 
             pollForResponse(lastCorrelationId);
@@ -2032,7 +2066,7 @@ public class AeronArchive implements AutoCloseable
     /**
      * Common configuration properties for communicating with an Aeron archive.
      */
-    public static class Configuration
+    public static final class Configuration
     {
         /**
          * Major version of the network protocol from client to archive. If these don't match then client and archive
@@ -2044,7 +2078,7 @@ public class AeronArchive implements AutoCloseable
          * Minor version of the network protocol from client to archive. If these don't match then some features may
          * not be available.
          */
-        public static final int PROTOCOL_MINOR_VERSION = 5;
+        public static final int PROTOCOL_MINOR_VERSION = 6;
 
         /**
          * Patch version of the network protocol from client to archive. If these don't match then bug fixes may not
@@ -2366,7 +2400,7 @@ public class AeronArchive implements AutoCloseable
      * The context will be owned by {@link AeronArchive} after a successful
      * {@link AeronArchive#connect(Context)} and closed via {@link AeronArchive#close()}.
      */
-    public static class Context implements Cloneable
+    public static final class Context implements Cloneable
     {
         /**
          * Using an integer because there is no support for boolean. 1 is concluded, 0 is not concluded.
@@ -2873,7 +2907,7 @@ public class AeronArchive implements AutoCloseable
     /**
      * Allows for the async establishment of a archive session.
      */
-    public static class AsyncConnect implements AutoCloseable
+    public static final class AsyncConnect implements AutoCloseable
     {
         private final Context ctx;
         private final ControlResponsePoller controlResponsePoller;
@@ -3047,7 +3081,7 @@ public class AeronArchive implements AutoCloseable
 
             if (deadlineNs - nanoClock.nanoTime() < 0)
             {
-                throw new TimeoutException("Archive connect timeout: correlationId=" + correlationId + " step=" + step);
+                throw new TimeoutException("Archive connect timeout: step=" + step);
             }
         }
     }

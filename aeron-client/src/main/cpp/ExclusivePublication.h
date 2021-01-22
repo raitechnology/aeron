@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ using namespace aeron::concurrent::status;
  * @see Aeron#addExclusivePublication(String, int)
  * @see BufferClaim
  */
-class ExclusivePublication
+class CLIENT_EXPORT ExclusivePublication
 {
 public:
 
@@ -586,15 +586,38 @@ public:
      * Add a destination manually to a multi-destination-cast Publication.
      *
      * @param endpointChannel for the destination to add
+     * @return correlation id for the add command
      */
-    void addDestination(const std::string &endpointChannel);
+    std::int64_t addDestination(const std::string &endpointChannel);
 
     /**
      * Remove a previously added destination manually from a multi-destination-cast Publication.
      *
      * @param endpointChannel for the destination to remove
+     * @return correlation id for the remove command
      */
-    void removeDestination(const std::string &endpointChannel);
+    std::int64_t removeDestination(const std::string &endpointChannel);
+
+    /**
+     * Retrieve the status of the associated add or remove destination operation with the given correlationId.
+     *
+     * This method is non-blocking.
+     *
+     * The value returned is dependent on what has occurred with respect to the media driver:
+     *
+     * - If the correlationId is unknown, then an exception is thrown.
+     * - If the media driver has not answered the add/remove command, then a false is returned.
+     * - If the media driver has successfully added or removed the destination then true is returned.
+     * - If the media driver has returned an error, this method will throw the error returned.
+     *
+     * @see Publication::addDestination
+     * @see Publication::removeDestination
+     *
+     * @param correlationId of the add/remove command returned by Publication::addDestination
+     * or Publication::removeDestination
+     * @return true for added or false if not.
+     */
+    bool findDestinationResponse(std::int64_t correlationId);
 
     /// @cond HIDDEN_SYMBOLS
     inline void close()
@@ -678,10 +701,10 @@ private:
 
     inline void checkMaxMessageLength(const util::index_t length) const
     {
-        if (length > m_maxMessageLength)
+        if (AERON_COND_EXPECT((length > m_maxMessageLength), false))
         {
-            throw util::IllegalArgumentException(
-                "encoded message exceeds maxMessageLength of " + std::to_string(m_maxMessageLength) +
+            throw aeron::util::IllegalArgumentException(
+                "message exceeds maxMessageLength=" + std::to_string(m_maxMessageLength) +
                 ", length=" + std::to_string(length), SOURCEINFO);
         }
     }
@@ -690,8 +713,8 @@ private:
     {
         if (AERON_COND_EXPECT((length > m_maxPayloadLength), false))
         {
-            throw util::IllegalArgumentException(
-                "encoded message exceeds maxPayloadLength of " + std::to_string(m_maxPayloadLength) +
+            throw aeron::util::IllegalArgumentException(
+                "message exceeds maxPayloadLength=" + std::to_string(m_maxPayloadLength) +
                 ", length=" + std::to_string(length), SOURCEINFO);
         }
     }

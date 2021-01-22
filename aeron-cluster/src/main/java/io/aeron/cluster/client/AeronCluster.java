@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -768,7 +768,7 @@ public final class AeronCluster implements AutoCloseable
     /**
      * Configuration options for cluster client.
      */
-    public static class Configuration
+    public static final class Configuration
     {
         /**
          * Major version of the network protocol from client to consensus module. If these don't match then client
@@ -940,7 +940,7 @@ public final class AeronCluster implements AutoCloseable
     /**
      * Context for cluster session and connection.
      */
-    public static class Context implements Cloneable
+    public static final class Context implements Cloneable
     {
         /**
          * Using an integer because there is no support for boolean. 1 is concluded, 0 is not concluded.
@@ -1284,7 +1284,9 @@ public final class AeronCluster implements AutoCloseable
         }
 
         /**
-         * Is ingress to the cluster exclusively from a single thread for this client?
+         * Is ingress to the cluster exclusively from a single thread to this client? Only set this if you are sure
+         * the client will not be used from another thread, e.g. a separate thread calling
+         * {@link AeronCluster#sendKeepAlive()} - which is a really bad design by the way!
          *
          * @param isIngressExclusive true if ingress to the cluster is exclusively from a single thread for this client?
          * @return this for a fluent API.
@@ -1296,9 +1298,9 @@ public final class AeronCluster implements AutoCloseable
         }
 
         /**
-         * Is ingress to the cluster exclusively from a single thread for this client?
+         * Is ingress to the cluster exclusively from a single thread to this client?
          *
-         * @return true if ingress to the cluster exclusively from a single thread for this client?
+         * @return true if ingress to the cluster exclusively from a single thread to this client?
          */
         public boolean isIngressExclusive()
         {
@@ -1447,7 +1449,7 @@ public final class AeronCluster implements AutoCloseable
      * it returns a non-null value with the new {@link AeronCluster} client. On error {@link #close()} should be called
      * to clean up allocated resources.
      */
-    public static class AsyncConnect implements AutoCloseable
+    public static final class AsyncConnect implements AutoCloseable
     {
         private final Subscription egressSubscription;
         private final long deadlineNs;
@@ -1588,26 +1590,24 @@ public final class AeronCluster implements AutoCloseable
         private void awaitPublicationConnected()
         {
             final String responseChannel = egressSubscription.tryResolveChannelEndpointPort();
-            if (null == responseChannel)
+            if (null != responseChannel)
             {
-                return;
-            }
-
-            if (null == ingressPublication)
-            {
-                for (final MemberIngress member : memberByIdMap.values())
+                if (null == ingressPublication)
                 {
-                    if (member.publication.isConnected())
+                    for (final MemberIngress member : memberByIdMap.values())
                     {
-                        ingressPublication = member.publication;
-                        prepareConnectRequest(responseChannel);
-                        return;
+                        if (member.publication.isConnected())
+                        {
+                            ingressPublication = member.publication;
+                            prepareConnectRequest(responseChannel);
+                            break;
+                        }
                     }
                 }
-            }
-            else if (ingressPublication.isConnected())
-            {
-                prepareConnectRequest(responseChannel);
+                else if (ingressPublication.isConnected())
+                {
+                    prepareConnectRequest(responseChannel);
+                }
             }
         }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014-2020 Real Logic Limited.
+ *  Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +27,7 @@ import static io.aeron.logbuffer.FrameDescriptor.*;
 
 final class LogAdapter implements ControlledFragmentHandler
 {
-    private static final int FRAGMENT_LIMIT = 100;
-
+    private final int fragmentLimit;
     private long logPosition;
     private Image image;
     private final ConsensusModuleAgent consensusModuleAgent;
@@ -42,9 +41,10 @@ final class LogAdapter implements ControlledFragmentHandler
     private final NewLeadershipTermEventDecoder newLeadershipTermEventDecoder = new NewLeadershipTermEventDecoder();
     private final MembershipChangeEventDecoder membershipChangeEventDecoder = new MembershipChangeEventDecoder();
 
-    LogAdapter(final ConsensusModuleAgent consensusModuleAgent)
+    LogAdapter(final ConsensusModuleAgent consensusModuleAgent, final int fragmentLimit)
     {
         this.consensusModuleAgent = consensusModuleAgent;
+        this.fragmentLimit = fragmentLimit;
     }
 
     void disconnect(final ErrorHandler errorHandler)
@@ -55,6 +55,12 @@ final class LogAdapter implements ControlledFragmentHandler
             CloseHelper.close(errorHandler, image.subscription());
             image = null;
         }
+    }
+
+    void disconnect(final ErrorHandler errorHandler, final long maxLogPosition)
+    {
+        disconnect(errorHandler);
+        logPosition = Math.min(logPosition, maxLogPosition);
     }
 
     ConsensusModuleAgent consensusModuleAgent()
@@ -74,7 +80,7 @@ final class LogAdapter implements ControlledFragmentHandler
 
     int poll(final long boundPosition)
     {
-        return image.boundedControlledPoll(this, boundPosition, FRAGMENT_LIMIT);
+        return image.boundedControlledPoll(this, boundPosition, fragmentLimit);
     }
 
     boolean isImageClosed()

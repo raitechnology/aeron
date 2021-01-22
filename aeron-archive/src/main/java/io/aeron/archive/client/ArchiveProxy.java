@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import static io.aeron.archive.client.AeronArchive.Configuration.MESSAGE_TIMEOUT
 /**
  * Proxy class for encapsulating encoding and sending of control protocol messages to an archive.
  */
-public class ArchiveProxy
+public final class ArchiveProxy
 {
     /**
      * Default number of retry attempts to be made when offering requests.
@@ -59,6 +59,7 @@ public class ArchiveProxy
     private ExtendRecordingRequest2Encoder extendRecordingRequest2;
     private RecordingPositionRequestEncoder recordingPositionRequest;
     private TruncateRecordingRequestEncoder truncateRecordingRequest;
+    private PurgeRecordingRequestEncoder purgeRecordingRequest;
     private StopPositionRequestEncoder stopPositionRequest;
     private FindLastMatchingRecordingRequestEncoder findLastMatchingRecordingRequest;
     private ListRecordingSubscriptionsRequestEncoder listRecordingSubscriptionsRequest;
@@ -740,6 +741,10 @@ public class ArchiveProxy
      * Truncate a stopped recording to a given position that is less than the stopped position. The provided position
      * must be on a fragment boundary. Truncating a recording to the start position effectively deletes the recording.
      *
+     * If the truncate operation will result in deleting segments then this will occur asynchronously. Before extending
+     * a truncated recording which has segments being asynchronously being deleted then you should await completion
+     * on the {@link io.aeron.archive.codecs.RecordingSignal#DELETE}.
+     *
      * @param recordingId      of the stopped recording to be truncated.
      * @param position         to which the recording will be truncated.
      * @param correlationId    for this request.
@@ -762,6 +767,32 @@ public class ArchiveProxy
             .position(position);
 
         return offer(truncateRecordingRequest.encodedLength());
+    }
+
+    /**
+     * Purge a stopped recording, i.e. mark recording as {@link io.aeron.archive.codecs.RecordingState#INVALID}
+     * and delete the corresponding segment files. The space in the Catalog will be reclaimed upon compaction.
+     *
+     * @param recordingId      of the stopped recording to be purged.
+     * @param correlationId    for this request.
+     * @param controlSessionId for this request.
+     * @return true if successfully offered otherwise false.
+     */
+    public boolean purgeRecording(
+        final long recordingId, final long correlationId, final long controlSessionId)
+    {
+        if (null == purgeRecordingRequest)
+        {
+            purgeRecordingRequest = new PurgeRecordingRequestEncoder();
+        }
+
+        purgeRecordingRequest
+            .wrapAndApplyHeader(buffer, 0, messageHeader)
+            .controlSessionId(controlSessionId)
+            .correlationId(correlationId)
+            .recordingId(recordingId);
+
+        return offer(purgeRecordingRequest.encodedLength());
     }
 
     /**

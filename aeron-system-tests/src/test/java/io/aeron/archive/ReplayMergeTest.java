@@ -24,8 +24,8 @@ import io.aeron.driver.ThreadingMode;
 import io.aeron.logbuffer.FragmentHandler;
 import io.aeron.protocol.DataHeaderFlyweight;
 import io.aeron.test.DataCollector;
-import io.aeron.test.MediaDriverTestWatcher;
-import io.aeron.test.TestMediaDriver;
+import io.aeron.test.driver.MediaDriverTestWatcher;
+import io.aeron.test.driver.TestMediaDriver;
 import io.aeron.test.Tests;
 import org.agrona.CloseHelper;
 import org.agrona.ExpandableArrayBuffer;
@@ -138,7 +138,7 @@ public class ReplayMergeTest
 
         archive = Archive.launch(
             new Archive.Context()
-                .maxCatalogEntries(MAX_CATALOG_ENTRIES)
+                .catalogCapacity(CATALOG_CAPACITY)
                 .aeronDirectoryName(mediaDriverContext.aeronDirectoryName())
                 .errorHandler(Tests::onError)
                 .archiveDir(archiveDir)
@@ -162,11 +162,11 @@ public class ReplayMergeTest
     @AfterEach
     public void after()
     {
-        if (receivedMessageCount.get() != MIN_MESSAGES_PER_TERM * 6)
+        if (receivedMessageCount.get() != MIN_MESSAGES_PER_TERM * 6L)
         {
             System.out.println(
                 "received " + receivedMessageCount.get() + ", sent " + messagesPublished +
-                ", total " + (MIN_MESSAGES_PER_TERM * 6));
+                ", total " + (MIN_MESSAGES_PER_TERM * 6L));
         }
 
         CloseHelper.closeAll(aeronArchive, aeron, archive, driver);

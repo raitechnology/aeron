@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,7 +82,8 @@ public class ArchiveException extends AeronException
     private final long correlationId;
 
     /**
-     * Default ArchiveException exception of {@link Category#ERROR} and {@link #errorCode()} = {@link #GENERIC}.
+     * Default ArchiveException exception of {@link io.aeron.exceptions.AeronException.Category#ERROR} and
+     * {@link #errorCode()} = {@link #GENERIC}.
      */
     public ArchiveException()
     {
@@ -92,7 +93,8 @@ public class ArchiveException extends AeronException
     }
 
     /**
-     * ArchiveException exception of {@link Category#ERROR} and {@link #errorCode()} = {@link #GENERIC}, plus detail.
+     * ArchiveException exception of {@link io.aeron.exceptions.AeronException.Category#ERROR} and
+     * {@link #errorCode()} = {@link #GENERIC}, plus detail.
      *
      * @param message providing detail.
      */
@@ -104,7 +106,8 @@ public class ArchiveException extends AeronException
     }
 
     /**
-     * ArchiveException exception of {@link Category#ERROR}, plus detail and error code.
+     * ArchiveException exception of {@link io.aeron.exceptions.AeronException.Category#ERROR}, plus detail and
+     * error code.
      *
      * @param message   providing detail.
      * @param errorCode for type.
@@ -117,7 +120,8 @@ public class ArchiveException extends AeronException
     }
 
     /**
-     * ArchiveException exception of {@link Category#ERROR}, plus detail, cause, and error code.
+     * ArchiveException exception of {@link io.aeron.exceptions.AeronException.Category#ERROR}, plus detail, cause,
+     * and error code.
      *
      * @param message   providing detail.
      * @param cause     of the error.
@@ -131,8 +135,8 @@ public class ArchiveException extends AeronException
     }
 
     /**
-     * ArchiveException exception of {@link Category#ERROR}, plus detail, error code, and correlation if of the
-     * control request.
+     * ArchiveException exception of {@link io.aeron.exceptions.AeronException.Category#ERROR}, plus detail, error code,
+     * and correlation if of the control request.
      *
      * @param message       providing detail.
      * @param errorCode     for type.
@@ -146,7 +150,8 @@ public class ArchiveException extends AeronException
     }
 
     /**
-     * ArchiveException exception {@link #errorCode()} = {@link #GENERIC}, plus detail and {@link Category}.
+     * ArchiveException exception {@link #errorCode()} = {@link #GENERIC}, plus detail and
+     * {@link io.aeron.exceptions.AeronException.Category}.
      *
      * @param message  providing detail.
      * @param category for type.
@@ -160,7 +165,7 @@ public class ArchiveException extends AeronException
 
     /**
      * ArchiveException exception {@link #errorCode()} = {@link #GENERIC}, plus detail, correlation id of control
-     * request, and {@link Category}.
+     * request, and {@link io.aeron.exceptions.AeronException.Category}.
      *
      * @param message       providing detail.
      * @param correlationId of the control request.
@@ -174,7 +179,8 @@ public class ArchiveException extends AeronException
     }
 
     /**
-     * ArchiveException exception, plus detail, error code, correlation id of control request, and {@link Category}.
+     * ArchiveException exception, plus detail, error code, correlation id of control request,
+     * and {@link io.aeron.exceptions.AeronException.Category}.
      *
      * @param message       providing detail.
      * @param errorCode     for type.

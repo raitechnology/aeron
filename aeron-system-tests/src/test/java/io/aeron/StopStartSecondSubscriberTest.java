@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,14 +24,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Test that a second subscriber can be stopped and started again while data is being published.
@@ -172,7 +169,7 @@ public class StopStartSecondSubscriberTest
         shouldReceiveMessagesAfterStopStart(CHANNEL1, STREAM_ID1, CHANNEL2, STREAM_ID2);
     }
 
-    private void doPublisherWork(final Publication publication, final AtomicBoolean running)
+    private void doPublisherWork(final Publication publication, final AtomicBoolean running, final CountDownLatch latch)
     {
         while (running.get())
         {
@@ -181,84 +178,86 @@ public class StopStartSecondSubscriberTest
                 Tests.yield();
             }
         }
+
+        latch.countDown();
     }
 
     private void shouldReceiveMessagesAfterStopStart(
         final String channelOne, final int streamOne, final String channelTwo, final int streamTwo)
     {
-        final ExecutorService executor = Executors.newFixedThreadPool(2);
         final int numMessages = 1;
         final MutableInteger subscriber2AfterRestartCount = new MutableInteger();
         final AtomicBoolean running = new AtomicBoolean(true);
+        final CountDownLatch latch = new CountDownLatch(2);
 
-        final FragmentHandler fragmentHandler2b =
+        final FragmentHandler fragmentHandler =
             (buffer, offset, length, header) -> subscriber2AfterRestartCount.value++;
 
         launch(channelOne, streamOne, channelTwo, streamTwo);
 
         buffer.putInt(0, 1);
 
-        executor.execute(() -> doPublisherWork(publicationOne, running));
-        executor.execute(() -> doPublisherWork(publicationTwo, running));
-
-        final MutableInteger fragmentsReadOne = new MutableInteger();
-        final MutableInteger fragmentsReadTwo = new MutableInteger();
-        final BooleanSupplier fragmentsReadCondition =
-            () -> fragmentsReadOne.get() >= numMessages && fragmentsReadTwo.get() >= numMessages;
-
-        Tests.executeUntil(
-            fragmentsReadCondition,
-            (i) ->
-            {
-                fragmentsReadOne.value += subscriptionOne.poll(fragmentHandlerOne, 1);
-                fragmentsReadTwo.value += subscriptionTwo.poll(fragmentHandlerTwo, 1);
-                Thread.yield();
-            },
-            Integer.MAX_VALUE,
-            TimeUnit.MILLISECONDS.toNanos(4900));
-
-        assertTrue(subOneCount.get() >= numMessages);
-        assertTrue(subTwoCount.get() >= numMessages);
-
-        subscriptionTwo.close();
-
-        fragmentsReadOne.set(0);
-        fragmentsReadTwo.set(0);
-
-        subscriptionTwo = subscriberTwo.addSubscription(channelTwo, streamTwo);
-
-        Tests.executeUntil(
-            fragmentsReadCondition,
-            (i) ->
-            {
-                fragmentsReadOne.value += subscriptionOne.poll(fragmentHandlerOne, 1);
-                fragmentsReadTwo.value += subscriptionTwo.poll(fragmentHandler2b, 1);
-                Thread.yield();
-            },
-            Integer.MAX_VALUE,
-            TimeUnit.MILLISECONDS.toNanos(4900));
-
-        running.set(false);
-
-        assertTrue(subOneCount.get() >= numMessages * 2,
-            "Expecting subscriberOne to receive messages the entire time");
-        assertTrue(subTwoCount.get() >= numMessages,
-            "Expecting subscriberTwo to receive messages before being stopped and started");
-        assertTrue(subscriber2AfterRestartCount.get() >= numMessages,
-            "Expecting subscriberTwo to receive messages after being stopped and started");
-
-        executor.shutdown();
-
+        final ExecutorService executor = Executors.newFixedThreadPool(2);
         try
         {
-            while (!executor.awaitTermination(1, TimeUnit.SECONDS))
-            {
-                System.err.println("awaiting termination");
-            }
+            executor.execute(() -> doPublisherWork(publicationOne, running, latch));
+            executor.execute(() -> doPublisherWork(publicationTwo, running, latch));
+
+            final MutableInteger fragmentsReadOne = new MutableInteger();
+            final MutableInteger fragmentsReadTwo = new MutableInteger();
+            final BooleanSupplier fragmentsReadCondition =
+                () -> fragmentsReadOne.get() >= numMessages && fragmentsReadTwo.get() >= numMessages;
+
+            Tests.executeUntil(
+                fragmentsReadCondition,
+                (i) ->
+                {
+                    fragmentsReadOne.value += subscriptionOne.poll(fragmentHandlerOne, 1);
+                    fragmentsReadTwo.value += subscriptionTwo.poll(fragmentHandlerTwo, 1);
+                    Thread.yield();
+                },
+                Integer.MAX_VALUE,
+                TimeUnit.MILLISECONDS.toNanos(4900));
+
+            assertTrue(subOneCount.get() >= numMessages);
+            assertTrue(subTwoCount.get() >= numMessages);
+
+            subscriptionTwo.close();
+
+            fragmentsReadOne.set(0);
+            fragmentsReadTwo.set(0);
+
+            subscriptionTwo = subscriberTwo.addSubscription(channelTwo, streamTwo);
+
+            Tests.executeUntil(
+                fragmentsReadCondition,
+                (i) ->
+                {
+                    fragmentsReadOne.value += subscriptionOne.poll(fragmentHandlerOne, 1);
+                    fragmentsReadTwo.value += subscriptionTwo.poll(fragmentHandler, 1);
+                    Thread.yield();
+                },
+                Integer.MAX_VALUE,
+                TimeUnit.MILLISECONDS.toNanos(4900));
+
+            running.set(false);
+            latch.await();
+
+            assertTrue(subOneCount.get() >= numMessages * 2,
+                "Expecting subscriberOne to receive messages the entire time");
+            assertTrue(subTwoCount.get() >= numMessages,
+                "Expecting subscriberTwo to receive messages before being stopped and started");
+            assertTrue(subscriber2AfterRestartCount.get() >= numMessages,
+                "Expecting subscriberTwo to receive messages after being stopped and started");
         }
         catch (final InterruptedException ex)
         {
-            LangUtil.rethrowUnchecked(ex);
+            fail("Interrupted", ex);
+        }
+        finally
+        {
+            running.set(false);
+            executor.shutdownNow();
         }
     }
 }

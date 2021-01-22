@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 #include "aeron_publication.h"
 #include "concurrent/aeron_term_appender.h"
 #include "aeron_log_buffer.h"
+#include "status/aeron_local_sockaddr.h"
 
 int aeron_publication_create(
     aeron_publication_t **publication,
@@ -124,7 +125,7 @@ int64_t aeron_publication_offer(
     int64_t new_position = AERON_PUBLICATION_CLOSED;
     bool is_closed;
 
-    if (NULL == publication || buffer == NULL)
+    if (NULL == publication || NULL == buffer)
     {
         errno = EINVAL;
         aeron_set_err(EINVAL, "aeron_publication_offer(NULL): %s", strerror(EINVAL));
@@ -210,7 +211,7 @@ int64_t aeron_publication_offerv(
     int64_t new_position = AERON_PUBLICATION_CLOSED;
     bool is_closed;
 
-    if (NULL == publication || iov == NULL)
+    if (NULL == publication || NULL == iov)
     {
         errno = EINVAL;
         aeron_set_err(EINVAL, "aeron_publication_offerv(NULL): %s", strerror(EINVAL));
@@ -299,7 +300,7 @@ int64_t aeron_publication_try_claim(aeron_publication_t *publication, size_t len
     int64_t new_position = AERON_PUBLICATION_CLOSED;
     bool is_closed;
 
-    if (NULL == publication || buffer_claim == NULL)
+    if (NULL == publication || NULL == buffer_claim)
     {
         errno = EINVAL;
         aeron_set_err(EINVAL, "aeron_publication_try_claim(NULL): %s", strerror(EINVAL));
@@ -401,6 +402,7 @@ int aeron_publication_constants(aeron_publication_t *publication, aeron_publicat
     constants->initial_term_id = publication->initial_term_id;
     constants->publication_limit_counter_id = publication->position_limit_counter_id;
     constants->channel_status_indicator_id = publication->channel_status_indicator_id;
+
     return 0;
 }
 
@@ -491,4 +493,21 @@ int32_t aeron_publication_stream_id(aeron_publication_t *publication)
 int32_t aeron_publication_session_id(aeron_publication_t *publication)
 {
     return publication->session_id;
+}
+
+int aeron_publication_local_sockaddrs(
+    aeron_publication_t *publication, aeron_iovec_t *address_vec, size_t address_vec_len)
+{
+    if (NULL == publication || NULL == address_vec || address_vec_len < 1)
+    {
+        errno = EINVAL;
+        aeron_set_err(EINVAL, "%s", strerror(EINVAL));
+        return -1;
+    }
+
+    return aeron_local_sockaddr_find_addrs(
+        &publication->conductor->counters_reader,
+        publication->channel_status_indicator_id,
+        address_vec,
+        address_vec_len);
 }

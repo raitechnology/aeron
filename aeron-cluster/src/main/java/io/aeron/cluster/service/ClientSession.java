@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import java.util.Arrays;
 /**
  * Session representing a connected client to the cluster.
  */
-public class ClientSession
+public final class ClientSession
 {
     /**
      * Return value to indicate egress to a session is mocked out by the cluster when in follower mode.

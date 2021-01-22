@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -767,6 +767,23 @@ class ControlSessionDemuxer implements Session, FragmentHandler
                 controlSession.onStopRecordingByIdentity(correlationId, decoder.recordingId());
                 break;
             }
+
+            case PurgeRecordingRequestDecoder.TEMPLATE_ID:
+            {
+                final PurgeRecordingRequestDecoder decoder = decoders.purgeRecordingRequest;
+                decoder.wrap(
+                    buffer,
+                    offset + MessageHeaderDecoder.ENCODED_LENGTH,
+                    headerDecoder.blockLength(),
+                    headerDecoder.version());
+
+                final long correlationId = decoder.correlationId();
+                final long controlSessionId = decoder.controlSessionId();
+                final ControlSession controlSession = getControlSession(controlSessionId, correlationId);
+
+                controlSession.onPurgeRecording(correlationId, decoder.recordingId());
+                break;
+            }
         }
     }
 
@@ -781,7 +798,6 @@ class ControlSessionDemuxer implements Session, FragmentHandler
         if (controlSession == null)
         {
             final String message = "unknown controlSessionId=" + controlSessionId +
-                " for correlationId=" + correlationId +
                 " from source=" + image.sourceIdentity();
 
             throw new ArchiveException(message, correlationId, AeronException.Category.WARN);

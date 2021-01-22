@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@
 #include "aeron_archive_client/KeepAliveRequest.h"
 #include "aeron_archive_client/ChallengeResponse.h"
 #include "aeron_archive_client/TaggedReplicateRequest.h"
+#include "aeron_archive_client/PurgeRecordingRequest.h"
 
 using namespace aeron;
 using namespace aeron::concurrent;
@@ -457,6 +458,22 @@ util::index_t ArchiveProxy::truncateRecording(
         .correlationId(correlationId)
         .recordingId(recordingId)
         .position(position);
+
+    return messageAndHeaderLength(request);
+}
+
+util::index_t ArchiveProxy::purgeRecording(
+    AtomicBuffer &buffer,
+    std::int64_t recordingId,
+    std::int64_t correlationId,
+    std::int64_t controlSessionId)
+{
+    PurgeRecordingRequest request;
+
+    wrapAndApplyHeader(request, buffer)
+        .controlSessionId(controlSessionId)
+        .correlationId(correlationId)
+        .recordingId(recordingId);
 
     return messageAndHeaderLength(request);
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -187,9 +187,8 @@ class ManualSndMultiDestination extends MultiSndDestination
             if ((destination.timeOfLastActivityNs + DESTINATION_TIMEOUT) - nowNs < 0)
             {
                 final String endpoint = destination.channelUri.get(CommonContext.ENDPOINT_PARAM_NAME);
-                final InetSocketAddress address = destination.address;
 
-                conductorProxy.reResolveEndpoint(endpoint, channelEndpoint, address);
+                conductorProxy.reResolveEndpoint(endpoint, channelEndpoint, destination.address);
                 destination.timeOfLastActivityNs = nowNs;
             }
         }

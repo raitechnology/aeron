@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,7 +108,7 @@ int aeron_feedback_delay_state_init(
 
     if (!is_seeded)
     {
-        aeron_srand48(aeron_nano_clock());
+        aeron_srand48((uint64_t)aeron_nano_clock());
         is_seeded = true;
     }
 

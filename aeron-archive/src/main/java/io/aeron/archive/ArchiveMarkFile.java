@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ public class ArchiveMarkFile implements AutoCloseable
     /**
      * Major version for the archive files stored on disk. A change to this requires migration.
      */
-    public static final int MAJOR_VERSION = 2;
+    public static final int MAJOR_VERSION = 3;
 
     /**
      * Minor version for the archive files stored on disk. A change to this indicates new features.

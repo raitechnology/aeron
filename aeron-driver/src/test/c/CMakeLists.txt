@@ -1,5 +1,5 @@
 #
-# Copyright 2014-2020 Real Logic Limited.
+# Copyright 2014-2021 Real Logic Limited.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,24 +23,12 @@ set(TEST_HEADERS
     aeron_driver_conductor_test.h
     aeron_receiver_test.h
     EmbeddedMediaDriver.h
-    aeron_test_udp_bindings.h)
+    aeron_test_udp_bindings.h
+    aeron_test_base.h)
 
 set(CMAKE_EXTRA_INCLUDE_FILES sys/socket.h)
 check_type_size("struct mmsghdr" STRUCT_MMSGHDR_TYPE_EXISTS)
 set(CMAKE_EXTRA_INCLUDE_FILES)
-
-if (POLL_PROTOTYPE_EXISTS)
-    add_definitions(-DHAVE_POLL)
-endif ()
-
-if (EPOLL_PROTOTYPE_EXISTS)
-    add_definitions(-DHAVE_EPOLL)
-endif ()
-
-if (WSAPOLL_PROTOTYPE_EXISTS)
-    add_definitions(-DHAVE_WSAPOLL)
-endif ()
-
 
 function(aeron_driver_test name file)
     add_executable(${name} ${file} ${TEST_HEADERS})
@@ -53,27 +41,15 @@ function(aeron_driver_test name file)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
-aeron_driver_test(spsc_rb_test aeron_spsc_rb_test.cpp)
-aeron_driver_test(mpsc_rb_test aeron_mpsc_rb_test.cpp)
 aeron_driver_test(counters_manager_test aeron_counters_manager_test.cpp)
-aeron_driver_test(distinct_error_log_test aeron_distinct_error_log_test.cpp)
 aeron_driver_test(driver_conductor_ipc_test aeron_driver_conductor_ipc_test.cpp)
 aeron_driver_test(driver_conductor_network_test aeron_driver_conductor_network_test.cpp)
 aeron_driver_test(driver_conductor_pub_sub_test aeron_driver_conductor_pub_sub_test.cpp)
 aeron_driver_test(driver_conductor_spy_test aeron_driver_conductor_spy_test.cpp)
 aeron_driver_test(driver_conductor_counter_test aeron_driver_conductor_counter_test.cpp)
 aeron_driver_test(driver_conductor_clock_test aeron_driver_conductor_clock_test.cpp)
-aeron_driver_test(spsc_queue_test aeron_spsc_concurrent_array_queue_test.cpp)
-aeron_driver_test(mpsc_queue_test aeron_mpsc_concurrent_array_queue_test.cpp)
-aeron_driver_test(uri_test aeron_uri_test.cpp)
+aeron_driver_test(uri_driver_test aeron_driver_uri_test.cpp)
 aeron_driver_test(udp_channel_test aeron_udp_channel_test.cpp)
-aeron_driver_test(int64_to_ptr_hash_map_test collections/aeron_int64_to_ptr_hash_map_test.cpp)
-aeron_driver_test(int64_counter_map_test collections/aeron_int64_counter_map_test.cpp)
-aeron_driver_test(int64_to_tagged_ptr_hash_map_test collections/aeron_int64_to_tagged_ptr_hash_map_test.cpp)
-aeron_driver_test(str_to_ptr_hash_map_test collections/aeron_str_to_ptr_hash_map_test.cpp)
-aeron_driver_test(bit_set_test collections/aeron_bit_set_test.cpp)
-aeron_driver_test(bitutil_test util/aeron_bitutil_test.cpp)
-aeron_driver_test(math_test util/aeron_math_test.cpp)
 aeron_driver_test(term_scanner_test aeron_term_scanner_test.cpp)
 aeron_driver_test(loss_detector_test aeron_loss_detector_test.cpp)
 aeron_driver_test(retransmit_handler_test aeron_retransmit_handler_test.cpp)
@@ -85,7 +61,6 @@ aeron_driver_test(properties_test aeron_properties_test.cpp)
 aeron_driver_test(driver_configuration_test aeron_driver_configuration_test.cpp)
 aeron_driver_test(driver_agent_test agent/aeron_driver_agent_test.cpp)
 aeron_driver_test(udp_channel_transport_loss_test media/aeron_udp_channel_transport_loss_test.cpp)
-aeron_driver_test(strutil_test aeron_strutil_test.cpp)
 aeron_driver_test(flow_control_test aeron_flow_control_test.cpp)
 aeron_driver_test(name_resolver_test aeron_name_resolver_test.cpp)
 aeron_driver_test(name_resolver_cache_test aeron_name_resolver_cache_test.cpp)
@@ -101,4 +76,14 @@ aeron_driver_test(c_system_test aeron_c_system_test.cpp)
 set_tests_properties(c_system_test PROPERTIES TIMEOUT 60)
 set_tests_properties(c_system_test PROPERTIES RUN_SERIAL TRUE)
 
+aeron_driver_test(c_local_addresses_test aeron_c_local_addresses_test.cpp)
+set_tests_properties(c_local_addresses_test PROPERTIES TIMEOUT 60)
+set_tests_properties(c_local_addresses_test PROPERTIES RUN_SERIAL TRUE)
+
+aeron_driver_test(c_cnc_test aeron_c_cnc_test.cpp)
+set_tests_properties(c_cnc_test PROPERTIES TIMEOUT 60)
+set_tests_properties(c_cnc_test PROPERTIES RUN_SERIAL TRUE)
+
 aeron_driver_test(congestion_control_test aeron_congestion_control_test.cpp)
+
+aeron_driver_test(network_publication_test aeron_network_publication_test.cpp)

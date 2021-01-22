@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,14 +79,13 @@ inline void read(
 
             if (!FrameDescriptor::isPaddingFrame(termBuffer, fragmentOffset))
             {
+                ++outcome.fragmentsRead;
                 header.buffer(termBuffer);
                 header.offset(fragmentOffset);
                 handler(
                     termBuffer,
                     fragmentOffset + DataFrameHeader::LENGTH,
                     frameLength - DataFrameHeader::LENGTH, header);
-
-                ++outcome.fragmentsRead;
             }
         }
     }

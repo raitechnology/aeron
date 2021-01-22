@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,8 +48,15 @@ public:
 
     ~EmbeddedMediaDriver()
     {
-        aeron_driver_close(m_driver);
-        aeron_driver_context_close(m_context);
+        if (0 != aeron_driver_close(m_driver))
+        {
+            fprintf(stderr, "ERROR: driver close (%d) %s\n", aeron_errcode(), aeron_errmsg());
+        }
+
+        if (0 != aeron_driver_context_close(m_context))
+        {
+            fprintf(stderr, "ERROR: driver context close (%d) %s\n", aeron_errcode(), aeron_errmsg());
+        }
     }
 
     void driverLoop()

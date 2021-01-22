@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,11 @@
  */
 package io.aeron.archive;
 
+import io.aeron.archive.checksum.Checksum;
+import io.aeron.archive.codecs.RecordingState;
 import io.aeron.protocol.DataHeaderFlyweight;
 import org.agrona.IoUtil;
+import org.agrona.collections.MutableBoolean;
 import org.agrona.concurrent.EpochClock;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.function.Executable;
@@ -31,6 +34,7 @@ import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -41,8 +45,9 @@ import static io.aeron.archive.ArchiveTool.VerifyOption.APPLY_CHECKSUM;
 import static io.aeron.archive.ArchiveTool.VerifyOption.VERIFY_ALL_SEGMENT_FILES;
 import static io.aeron.archive.Catalog.*;
 import static io.aeron.archive.checksum.Checksums.crc32;
-import static io.aeron.archive.client.AeronArchive.NULL_POSITION;
-import static io.aeron.archive.client.AeronArchive.NULL_TIMESTAMP;
+import static io.aeron.archive.client.AeronArchive.*;
+import static io.aeron.archive.codecs.RecordingState.INVALID;
+import static io.aeron.archive.codecs.RecordingState.VALID;
 import static io.aeron.logbuffer.FrameDescriptor.FRAME_ALIGNMENT;
 import static io.aeron.logbuffer.LogBufferDescriptor.computeTermIdFromPosition;
 import static io.aeron.logbuffer.LogBufferDescriptor.positionBitsToShift;
@@ -52,6 +57,7 @@ import static java.nio.file.Files.createTempDirectory;
 import static java.nio.file.Files.deleteIfExists;
 import static java.nio.file.StandardOpenOption.READ;
 import static java.nio.file.StandardOpenOption.WRITE;
+import static java.util.Collections.addAll;
 import static java.util.Collections.emptySet;
 import static java.util.EnumSet.allOf;
 import static java.util.EnumSet.of;
@@ -114,7 +120,7 @@ class ArchiveToolTests
     {
         archiveDir = ArchiveTests.makeTestDirectory();
 
-        try (Catalog catalog = new Catalog(archiveDir, null, 0, 128, epochClock, null, null))
+        try (Catalog catalog = new Catalog(archiveDir, null, 0, 1024, epochClock, null, null))
         {
             invalidRecording0 = catalog.addNewRecording(NULL_POSITION, NULL_POSITION, 1, NULL_TIMESTAMP, 0,
                 SEGMENT_LENGTH, TERM_LENGTH, MTU_LENGTH, 1, 1, "ch1", "ch1?tag=ERR", "src1");
@@ -498,7 +504,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording0, INVALID, NULL_POSITION, NULL_POSITION, 1, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording0, INVALID, 0, NULL_POSITION, NULL_POSITION, 1, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
         }
     }
@@ -511,8 +517,8 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording1, INVALID, FRAME_ALIGNMENT - 7, NULL_POSITION, 2, NULL_TIMESTAMP,
-                0, 1, "ch1", "src1");
+            assertRecording(catalog, invalidRecording1, INVALID, 0, FRAME_ALIGNMENT - 7, NULL_POSITION, 2,
+                NULL_TIMESTAMP, 0, 1, "ch1", "src1");
         }
     }
 
@@ -524,7 +530,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording2, INVALID, 1024, FRAME_ALIGNMENT * 2, 3, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording2, INVALID, 0, 1024, FRAME_ALIGNMENT * 2, 3, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
         }
     }
@@ -537,7 +543,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording3, INVALID, 0, FRAME_ALIGNMENT * 5 + 11, 4, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording3, INVALID, 0, 0, FRAME_ALIGNMENT * 5 + 11, 4, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
         }
     }
@@ -550,7 +556,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording4, INVALID, SEGMENT_LENGTH, NULL_POSITION, 5, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording4, INVALID, 0, SEGMENT_LENGTH, NULL_POSITION, 5, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
         }
     }
@@ -563,7 +569,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording5, INVALID, 0, SEGMENT_LENGTH, 6, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording5, INVALID, 0, 0, SEGMENT_LENGTH, 6, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
         }
     }
@@ -576,7 +582,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording6, INVALID, 0, NULL_POSITION, 7, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording6, INVALID, 0, 0, NULL_POSITION, 7, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
         }
     }
@@ -589,7 +595,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording7, INVALID, 0, NULL_POSITION, 8, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording7, INVALID, 0, 0, NULL_POSITION, 8, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
         }
     }
@@ -602,7 +608,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording8, INVALID, 0, NULL_POSITION, 9, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording8, INVALID, 0, 0, NULL_POSITION, 9, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
         }
     }
@@ -615,7 +621,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording9, INVALID, 0, NULL_POSITION, 10, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording9, INVALID, 0, 0, NULL_POSITION, 10, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
         }
     }
@@ -628,7 +634,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording10, INVALID, 128, NULL_POSITION, 11, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording10, INVALID, 0, 128, NULL_POSITION, 11, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
         }
     }
@@ -641,7 +647,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording11, INVALID, 0, NULL_POSITION, 12, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording11, INVALID, 0, 0, NULL_POSITION, 12, NULL_TIMESTAMP,
                 5, 1, "ch1", "src1");
         }
     }
@@ -654,7 +660,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording12, INVALID, 0, NULL_POSITION, 13, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording12, INVALID, 0, 0, NULL_POSITION, 13, NULL_TIMESTAMP,
                 9, 6, "ch1", "src1");
         }
     }
@@ -667,7 +673,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording13, INVALID, 0, NULL_POSITION, 14, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording13, INVALID, 0, 0, NULL_POSITION, 14, NULL_TIMESTAMP,
                 0, 13, "ch1", "src1");
         }
     }
@@ -680,7 +686,8 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording14, INVALID, 128, NULL_POSITION, -14, 41, -14, 0, "ch1", "src1");
+            assertRecording(catalog, invalidRecording14, INVALID, 0, 128, NULL_POSITION,
+                -14, 41, -14, 0, "ch1", "src1");
         }
     }
 
@@ -692,7 +699,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording0, VALID, 0, TERM_LENGTH + 64, 15, 100, 0, 2, "ch2", "src2");
+            assertRecording(catalog, validRecording0, VALID, 0, 0, TERM_LENGTH + 64, 15, 100, 0, 2, "ch2", "src2");
         }
     }
 
@@ -704,7 +711,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording1, VALID, 1024, 1024, 16, 100, 0, 2, "ch2", "src2");
+            assertRecording(catalog, validRecording1, VALID, 0, 1024, 1024, 16, 100, 0, 2, "ch2", "src2");
         }
     }
 
@@ -716,7 +723,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording2, VALID, TERM_LENGTH * 3 + 96, TERM_LENGTH * 3 + 96, 17, 100,
+            assertRecording(catalog, validRecording2, VALID, 0, TERM_LENGTH * 3 + 96, TERM_LENGTH * 3 + 96, 17, 100,
                 0, 2, "ch2", "src2");
         }
     }
@@ -729,7 +736,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording3, VALID, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
+            assertRecording(catalog, validRecording3, VALID, 0, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
                 18, 100, 7, 13, "ch2", "src2");
         }
     }
@@ -742,7 +749,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording4, VALID, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
+            assertRecording(catalog, validRecording4, VALID, 0, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
                 22 * TERM_LENGTH + 992, 19, 1, -25, 7, "ch2", "src2");
         }
     }
@@ -755,7 +762,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording3, VALID, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
+            assertRecording(catalog, validRecording3, VALID, 0, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
                 18, 100, 7, 13, "ch2", "src2");
         }
     }
@@ -768,7 +775,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording4, INVALID, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
+            assertRecording(catalog, validRecording4, INVALID, 0, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
                 22 * TERM_LENGTH + 992, 19, 1, -25, 7, "ch2", "src2");
         }
     }
@@ -780,7 +787,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording51, VALID, 0, 64 + PAGE_SIZE, 20, 777,
+            assertRecording(catalog, validRecording51, VALID, 0, 0, 64 + PAGE_SIZE, 20, 777,
                 0, 20, "ch2", "src2");
         }
     }
@@ -792,7 +799,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording52, VALID, 0, 128 + MTU_LENGTH, 21, 100,
+            assertRecording(catalog, validRecording52, VALID, 0, 0, 128 + MTU_LENGTH, 21, 100,
                 0, 52, "ch2", "src2");
         }
     }
@@ -805,7 +812,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording53, VALID, 0, 64, 22, 100, 0, 53, "ch2", "src2");
+            assertRecording(catalog, validRecording53, VALID, 0, 0, 64, 22, 100, 0, 53, "ch2", "src2");
         }
     }
 
@@ -817,19 +824,41 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording53, VALID, 0, 64 + 3 * PAGE_SIZE, 22, 100, 0, 53, "ch2", "src2");
+            assertRecording(catalog, validRecording53, VALID, 0, 0, 64 + 3 * PAGE_SIZE, 22, 100, 0, 53, "ch2", "src2");
         }
     }
 
     @Test
     void verifyRecordingValidRecordingPerformCRC()
     {
+        final Checksum checksum = crc32();
+        try (Catalog catalog = openCatalogReadWrite(archiveDir, epochClock, MIN_CAPACITY, checksum, null))
+        {
+            assertRecording(catalog,
+                validRecording6,
+                (recordingDescriptorOffset, headerEncoder, headerDecoder, descriptorEncoder, descriptorDecoder) ->
+                catalog.updateChecksum(recordingDescriptorOffset));
+        }
+
         assertTrue(verifyRecording(
+            out, archiveDir, validRecording6, of(APPLY_CHECKSUM), checksum, epochClock, (file) -> false));
+
+        try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
+        {
+            assertRecording(catalog, validRecording6, VALID, -175549265, 352, 960, 23, 100, 0, 6, "ch2", "src2");
+        }
+    }
+
+    @Test
+    void verifyRecordingShouldMarkRecordingAsInvalidIfCatalogChecksumIsWrong()
+    {
+        assertFalse(verifyRecording(
             out, archiveDir, validRecording6, of(APPLY_CHECKSUM), crc32(), epochClock, (file) -> false));
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording6, VALID, 352, 960, 23, 100, 0, 6, "ch2", "src2");
+            assertRecording(catalog, validRecording6, INVALID, 0, 352, NULL_POSITION, 23,
+                NULL_TIMESTAMP, 0, 6, "ch2", "src2");
         }
     }
 
@@ -841,7 +870,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording3, INVALID, 7 * TERM_LENGTH + 96, 7 * TERM_LENGTH + 128,
+            assertRecording(catalog, validRecording3, INVALID, 0, 7 * TERM_LENGTH + 96, 7 * TERM_LENGTH + 128,
                 18, NULL_TIMESTAMP, 7, 13, "ch2", "src2");
         }
     }
@@ -853,52 +882,54 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording0, INVALID, NULL_POSITION, NULL_POSITION, 1, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording0, INVALID, 0, NULL_POSITION, NULL_POSITION, 1, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording1, INVALID, FRAME_ALIGNMENT - 7, NULL_POSITION, 2, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording1, INVALID, 0, FRAME_ALIGNMENT - 7, NULL_POSITION, 2,
+                NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording2, INVALID, 1024, FRAME_ALIGNMENT * 2, 3, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording2, INVALID, 0, 1024, FRAME_ALIGNMENT * 2, 3, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording3, INVALID, 0, FRAME_ALIGNMENT * 5 + 11, 4, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording3, INVALID, 0, 0, FRAME_ALIGNMENT * 5 + 11, 4, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording4, INVALID, SEGMENT_LENGTH, NULL_POSITION, 5, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording4, INVALID, 0, SEGMENT_LENGTH, NULL_POSITION, 5, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording5, INVALID, 0, SEGMENT_LENGTH, 6, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording5, INVALID, 0, 0, SEGMENT_LENGTH, 6, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording6, INVALID, 0, NULL_POSITION, 7, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording6, INVALID, 0, 0, NULL_POSITION, 7, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording7, INVALID, 0, NULL_POSITION, 8, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording7, INVALID, 0, 0, NULL_POSITION, 8, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording8, INVALID, 0, NULL_POSITION, 9, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording8, INVALID, 0, 0, NULL_POSITION, 9, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording9, INVALID, 0, NULL_POSITION, 10, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording9, INVALID, 0, 0, NULL_POSITION, 10, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording10, INVALID, 128, NULL_POSITION, 11, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording10, INVALID, 0, 128, NULL_POSITION, 11, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording11, INVALID, 0, NULL_POSITION, 12, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording11, INVALID, 0, 0, NULL_POSITION, 12, NULL_TIMESTAMP,
                 5, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording12, INVALID, 0, NULL_POSITION, 13, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording12, INVALID, 0, 0, NULL_POSITION, 13, NULL_TIMESTAMP,
                 9, 6, "ch1", "src1");
-            assertRecording(catalog, invalidRecording13, INVALID, 0, NULL_POSITION, 14, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording13, INVALID, 0, 0, NULL_POSITION, 14, NULL_TIMESTAMP,
                 0, 13, "ch1", "src1");
-            assertRecording(catalog, invalidRecording14, INVALID, 128, NULL_POSITION, -14, 41, -14, 0, "ch1", "src1");
-            assertRecording(catalog, validRecording0, VALID, 0, TERM_LENGTH + 64, 15, 100,
+            assertRecording(catalog, invalidRecording14, INVALID, 0, 128, NULL_POSITION, -14,
+                41, -14, 0, "ch1", "src1");
+            assertRecording(catalog, validRecording0, VALID, 0, 0, TERM_LENGTH + 64, 15, 100,
                 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording1, VALID, 1024, 1024, 16, 200,
+            assertRecording(catalog, validRecording1, VALID, 0, 1024, 1024, 16, 200,
                 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording2, VALID, TERM_LENGTH * 3 + 96, TERM_LENGTH * 3 + 96,
+            assertRecording(catalog, validRecording2, VALID, 0, TERM_LENGTH * 3 + 96, TERM_LENGTH * 3 + 96,
                 17, 300, 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording3, VALID, 7 * TERM_LENGTH + 96,
+            assertRecording(catalog, validRecording3, VALID, 0, 7 * TERM_LENGTH + 96,
                 11 * TERM_LENGTH + 320, 18, 400, 7, 13, "ch2", "src2");
-            assertRecording(catalog, validRecording4, VALID, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
+            assertRecording(catalog, validRecording4, VALID, 0, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
                 22 * TERM_LENGTH + 992, 19, 1, -25, 7, "ch2", "src2");
-            assertRecording(catalog, validRecording51, VALID, 0, 64 + PAGE_SIZE, 20, 777,
+            assertRecording(catalog, validRecording51, VALID, 0, 0, 64 + PAGE_SIZE, 20, 777,
                 0, 20, "ch2", "src2");
-            assertRecording(catalog, validRecording52, VALID, 0, 128 + MTU_LENGTH, 21, 500,
+            assertRecording(catalog, validRecording52, VALID, 0, 0, 128 + MTU_LENGTH, 21, 500,
                 0, 52, "ch2", "src2");
-            assertRecording(catalog, validRecording53, VALID, 0, 64 + 3 * PAGE_SIZE, 22, 600,
+            assertRecording(catalog, validRecording53, VALID, 0, 0, 64 + 3 * PAGE_SIZE, 22, 600,
                 0, 53, "ch2", "src2");
-            assertRecording(catalog, validRecording6, VALID, 352, 960, 23, 700, 0, 6, "ch2", "src2");
+            assertRecording(catalog, validRecording6, VALID, 0, 352, 960, 23, 700, 0, 6, "ch2", "src2");
         }
 
         Mockito.verify(out, times(24)).println(any(String.class));
@@ -907,56 +938,109 @@ class ArchiveToolTests
     @Test
     void verifyAllOptionsTruncateOnPageStraddle()
     {
-        assertFalse(verify(out, archiveDir, allOf(VerifyOption.class), crc32(), epochClock, (file) -> true));
+        final Checksum checksum = crc32();
+        try (Catalog catalog = openCatalogReadWrite(archiveDir, epochClock, MIN_CAPACITY, checksum, null))
+        {
+            catalog.forEach(
+                (recordingDescriptorOffset, headerEncoder, headerDecoder, descriptorEncoder, descriptorDecoder) ->
+                catalog.updateChecksum(recordingDescriptorOffset));
+        }
+
+        assertFalse(verify(out, archiveDir, allOf(VerifyOption.class), checksum, epochClock, (file) -> true));
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, invalidRecording0, INVALID, NULL_POSITION, NULL_POSITION, 1, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording0, INVALID, -119969720, NULL_POSITION, NULL_POSITION, 1,
+                NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording1, INVALID, FRAME_ALIGNMENT - 7, NULL_POSITION, 2, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording1, INVALID, 768794941, FRAME_ALIGNMENT - 7, NULL_POSITION, 2,
+                NULL_TIMESTAMP, 0, 1, "ch1", "src1");
+            assertRecording(catalog, invalidRecording2, INVALID, -1340428433, 1024, FRAME_ALIGNMENT * 2,
+                3, NULL_TIMESTAMP, 0, 1, "ch1", "src1");
+            assertRecording(catalog, invalidRecording3, INVALID, 1464972620, 0, FRAME_ALIGNMENT * 5 + 11,
+                4, NULL_TIMESTAMP, 0, 1, "ch1", "src1");
+            assertRecording(catalog, invalidRecording4, INVALID, 21473288, SEGMENT_LENGTH, NULL_POSITION, 5,
+                NULL_TIMESTAMP, 0, 1, "ch1", "src1");
+            assertRecording(catalog, invalidRecording5, INVALID, -2119992405, 0, SEGMENT_LENGTH, 6, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording2, INVALID, 1024, FRAME_ALIGNMENT * 2, 3, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording6, INVALID, 2054096463, 0, NULL_POSITION, 7, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording3, INVALID, 0, FRAME_ALIGNMENT * 5 + 11, 4, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording7, INVALID, -1050175867, 0, NULL_POSITION, 8, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording4, INVALID, SEGMENT_LENGTH, NULL_POSITION, 5, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording8, INVALID, -504693275, 0, NULL_POSITION, 9, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording5, INVALID, 0, SEGMENT_LENGTH, 6, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording9, INVALID, -2036430506, 0, NULL_POSITION, 10, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording6, INVALID, 0, NULL_POSITION, 7, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording10, INVALID, -414736820, 128, NULL_POSITION, 11, NULL_TIMESTAMP,
                 0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording7, INVALID, 0, NULL_POSITION, 8, NULL_TIMESTAMP,
-                0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording8, INVALID, 0, NULL_POSITION, 9, NULL_TIMESTAMP,
-                0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording9, INVALID, 0, NULL_POSITION, 10, NULL_TIMESTAMP,
-                0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording10, INVALID, 128, NULL_POSITION, 11, NULL_TIMESTAMP,
-                0, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording11, INVALID, 0, NULL_POSITION, 12, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording11, INVALID, 1983095657, 0, NULL_POSITION, 12, NULL_TIMESTAMP,
                 5, 1, "ch1", "src1");
-            assertRecording(catalog, invalidRecording12, INVALID, 0, NULL_POSITION, 13, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording12, INVALID, -1308504240, 0, NULL_POSITION, 13, NULL_TIMESTAMP,
                 9, 6, "ch1", "src1");
-            assertRecording(catalog, invalidRecording13, INVALID, 0, NULL_POSITION, 14, NULL_TIMESTAMP,
+            assertRecording(catalog, invalidRecording13, INVALID, -273182324, 0, NULL_POSITION, 14, NULL_TIMESTAMP,
                 0, 13, "ch1", "src1");
-            assertRecording(catalog, invalidRecording14, INVALID, 128, NULL_POSITION, -14, 41, -14, 0, "ch1", "src1");
-            assertRecording(catalog, validRecording0, VALID, 0, TERM_LENGTH + 64, 15, 100,
+            assertRecording(catalog, invalidRecording14, INVALID, 213018412, 128, NULL_POSITION, -14,
+                41, -14, 0, "ch1", "src1");
+            assertRecording(catalog, validRecording0, VALID, 356725588, 0, TERM_LENGTH + 64, 15, 100,
                 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording1, VALID, 1024, 1024, 16, 200,
+            assertRecording(catalog, validRecording1, VALID, -1571032591, 1024, 1024, 16, 200,
                 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording2, VALID, TERM_LENGTH * 3 + 96, TERM_LENGTH * 3 + 96,
+            assertRecording(catalog, validRecording2, VALID, 114203747, TERM_LENGTH * 3 + 96, TERM_LENGTH * 3 + 96,
                 17, 300, 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording3, INVALID, 7 * TERM_LENGTH + 96, 7 * TERM_LENGTH + 128,
+            assertRecording(catalog, validRecording3, INVALID, 963969455, 7 * TERM_LENGTH + 96, 7 * TERM_LENGTH + 128,
                 18, NULL_TIMESTAMP, 7, 13, "ch2", "src2");
-            assertRecording(catalog, validRecording4, INVALID, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
+            assertRecording(catalog, validRecording4, INVALID, 162247708, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
                 22 * TERM_LENGTH + 992, 19, 1, -25, 7, "ch2", "src2");
-            assertRecording(catalog, validRecording51, VALID, 0, 64 + PAGE_SIZE, 20, 777,
+            assertRecording(catalog, validRecording51, VALID, -940881948, 0, 64 + PAGE_SIZE, 20, 777,
                 0, 20, "ch2", "src2");
-            assertRecording(catalog, validRecording52, INVALID, 0, NULL_POSITION, 21, NULL_TIMESTAMP,
+            assertRecording(catalog, validRecording52, INVALID, 1046083782, 0, NULL_POSITION, 21, NULL_TIMESTAMP,
                 0, 52, "ch2", "src2");
-            assertRecording(catalog, validRecording53, INVALID, 0, NULL_POSITION, 22, NULL_TIMESTAMP,
+            assertRecording(catalog, validRecording53, INVALID, 428178649, 0, NULL_POSITION, 22, NULL_TIMESTAMP,
                 0, 53, "ch2", "src2");
-            assertRecording(catalog, validRecording6, VALID, 352, 960, 23, 400, 0, 6, "ch2", "src2");
+            assertRecording(catalog, validRecording6, VALID, -175549265, 352, 960, 23, 400, 0, 6, "ch2", "src2");
+        }
+
+        Mockito.verify(out, times(24)).println(any(String.class));
+    }
+
+    @Test
+    void verifyChecksum()
+    {
+        final Checksum checksum = crc32();
+        try (Catalog catalog = openCatalogReadWrite(archiveDir, epochClock, MIN_CAPACITY, checksum, null))
+        {
+            assertRecording(catalog,
+                validRecording51,
+                (recordingDescriptorOffset, headerEncoder, headerDecoder, descriptorEncoder, descriptorDecoder) ->
+                catalog.updateChecksum(recordingDescriptorOffset));
+
+            assertRecording(catalog,
+                validRecording6,
+                (recordingDescriptorOffset, headerEncoder, headerDecoder, descriptorEncoder, descriptorDecoder) ->
+                catalog.updateChecksum(recordingDescriptorOffset));
+        }
+
+        assertFalse(verify(out, archiveDir, of(APPLY_CHECKSUM), checksum, epochClock, (file) -> true));
+
+        try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
+        {
+            assertRecording(catalog, validRecording0, INVALID, 0, 0, NULL_POSITION, 15, NULL_TIMESTAMP,
+                0, 2, "ch2", "src2");
+            assertRecording(catalog, validRecording1, INVALID, 0, 1024, NULL_POSITION, 16, NULL_TIMESTAMP,
+                0, 2, "ch2", "src2");
+            assertRecording(catalog, validRecording2, INVALID, 0, TERM_LENGTH * 3 + 96, NULL_POSITION,
+                17, NULL_TIMESTAMP, 0, 2, "ch2", "src2");
+            assertRecording(catalog, validRecording3, INVALID, 0, 7 * TERM_LENGTH + 96, 7 * TERM_LENGTH + 128,
+                18, NULL_TIMESTAMP, 7, 13, "ch2", "src2");
+            assertRecording(catalog, validRecording4, INVALID, 0, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
+                22 * TERM_LENGTH + 992, 19, 1, -25, 7, "ch2", "src2");
+            assertRecording(catalog, validRecording51, VALID, -940881948, 0, 64 + PAGE_SIZE, 20, 777,
+                0, 20, "ch2", "src2");
+            assertRecording(catalog, validRecording52, INVALID, 0, 0, NULL_POSITION, 21, NULL_TIMESTAMP,
+                0, 52, "ch2", "src2");
+            assertRecording(catalog, validRecording53, INVALID, 0, 0, NULL_POSITION, 22, NULL_TIMESTAMP,
+                0, 53, "ch2", "src2");
+            assertRecording(catalog, validRecording6, VALID, -175549265, 352, 960, 23, 100, 0, 6, "ch2", "src2");
         }
 
         Mockito.verify(out, times(24)).println(any(String.class));
@@ -971,7 +1055,7 @@ class ArchiveToolTests
             out, archiveDir, validRecording3, of(APPLY_CHECKSUM), crc32(), epochClock, (file) -> false));
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording3, VALID, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
+            assertRecording(catalog, validRecording3, VALID, 963969455, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
                 18, 100, 7, 13, "ch2", "src2");
         }
 
@@ -979,7 +1063,7 @@ class ArchiveToolTests
             out, archiveDir, validRecording3, allOf(VerifyOption.class), crc32(), epochClock, (file) -> false);
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording3, INVALID, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
+            assertRecording(catalog, validRecording3, INVALID, 963969455, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
                 18, 100, 7, 13, "ch2", "src2");
         }
     }
@@ -993,7 +1077,7 @@ class ArchiveToolTests
             out, archiveDir, validRecording3, allOf(VerifyOption.class), crc32(), epochClock, (file) -> false));
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording3, VALID, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
+            assertRecording(catalog, validRecording3, VALID, 963969455, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
                 18, 100, 7, 13, "ch2", "src2");
         }
     }
@@ -1006,19 +1090,19 @@ class ArchiveToolTests
         assertFalse(verify(out, archiveDir, allOf(VerifyOption.class), crc32(), epochClock, (file) -> false));
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording0, VALID, 0, TERM_LENGTH + 64, 15, 100,
+            assertRecording(catalog, validRecording0, VALID, 356725588, 0, TERM_LENGTH + 64, 15, 100,
                 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording1, VALID, 1024, 1024, 16, 200,
+            assertRecording(catalog, validRecording1, VALID, -1571032591, 1024, 1024, 16, 200,
                 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording2, VALID, TERM_LENGTH * 3 + 96, TERM_LENGTH * 3 + 96,
+            assertRecording(catalog, validRecording2, VALID, 114203747, TERM_LENGTH * 3 + 96, TERM_LENGTH * 3 + 96,
                 17, 300, 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording3, INVALID, 7 * TERM_LENGTH + 96, 7 * TERM_LENGTH + 128,
+            assertRecording(catalog, validRecording3, INVALID, 963969455, 7 * TERM_LENGTH + 96, 7 * TERM_LENGTH + 128,
                 18, NULL_TIMESTAMP, 7, 13, "ch2", "src2");
-            assertRecording(catalog, validRecording4, INVALID, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
+            assertRecording(catalog, validRecording4, INVALID, 162247708, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
                 22 * TERM_LENGTH + 992, 19, 1, -25, 7, "ch2", "src2");
-            assertRecording(catalog, validRecording51, VALID, 0, 64 + PAGE_SIZE, 20, 777,
+            assertRecording(catalog, validRecording51, VALID, -940881948, 0, 64 + PAGE_SIZE, 20, 777,
                 0, 20, "ch2", "src2");
-            assertRecording(catalog, validRecording6, VALID, 352, 960, 23, 600, 0, 6, "ch2", "src2");
+            assertRecording(catalog, validRecording6, VALID, -175549265, 352, 960, 23, 600, 0, 6, "ch2", "src2");
         }
     }
 
@@ -1030,19 +1114,19 @@ class ArchiveToolTests
         assertFalse(verify(out, archiveDir, allOf(VerifyOption.class), crc32(), epochClock, (file) -> false));
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecording(catalog, validRecording0, VALID, 0, TERM_LENGTH + 64, 15, 100,
+            assertRecording(catalog, validRecording0, VALID, 356725588, 0, TERM_LENGTH + 64, 15, 100,
                 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording1, VALID, 1024, 1024, 16, 200,
+            assertRecording(catalog, validRecording1, VALID, -1571032591, 1024, 1024, 16, 200,
                 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording2, VALID, TERM_LENGTH * 3 + 96, TERM_LENGTH * 3 + 96,
+            assertRecording(catalog, validRecording2, VALID, 114203747, TERM_LENGTH * 3 + 96, TERM_LENGTH * 3 + 96,
                 17, 300, 0, 2, "ch2", "src2");
-            assertRecording(catalog, validRecording3, VALID, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
+            assertRecording(catalog, validRecording3, VALID, 963969455, 7 * TERM_LENGTH + 96, 11 * TERM_LENGTH + 320,
                 18, 400, 7, 13, "ch2", "src2");
-            assertRecording(catalog, validRecording4, INVALID, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
+            assertRecording(catalog, validRecording4, INVALID, 162247708, 21 * TERM_LENGTH + (TERM_LENGTH - 64),
                 22 * TERM_LENGTH + 992, 19, 1, -25, 7, "ch2", "src2");
-            assertRecording(catalog, validRecording51, VALID, 0, 64 + PAGE_SIZE, 20, 777,
+            assertRecording(catalog, validRecording51, VALID, -940881948, 0, 64 + PAGE_SIZE, 20, 777,
                 0, 20, "ch2", "src2");
-            assertRecording(catalog, validRecording6, VALID, 352, 960, 23, 700, 0, 6, "ch2", "src2");
+            assertRecording(catalog, validRecording6, VALID, -175549265, 352, 960, 23, 700, 0, 6, "ch2", "src2");
         }
     }
 
@@ -1067,7 +1151,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecordingValidFlag(catalog, validRecording4);
+            assertRecordingState(catalog, validRecording4, VALID);
         }
     }
 
@@ -1079,7 +1163,7 @@ class ArchiveToolTests
 
         try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
         {
-            assertRecordingValidFlag(catalog, validRecording4);
+            assertRecordingState(catalog, validRecording4, VALID);
         }
     }
 
@@ -1094,6 +1178,113 @@ class ArchiveToolTests
     {
         assertChecksumClassNameValidation(
             () -> verifyRecording(out, archiveDir, validRecording4, of(APPLY_CHECKSUM), null, (file) -> true));
+    }
+
+    @Test
+    void compactDeletesRecordingsInStateInvalidAndDeletesTheCorrespondingSegmentFiles()
+    {
+        // Mark recording as INVALID without invoking `invalidateRecording` operation
+        verifyRecording(
+            out, archiveDir, validRecording3, allOf(VerifyOption.class), crc32(), epochClock, (file) -> false);
+
+        try (Catalog catalog = openCatalogReadWrite(archiveDir, epochClock, MIN_CAPACITY, null, null))
+        {
+            assertRecordingState(catalog, validRecording3, INVALID);
+
+            assertTrue(catalog.invalidateRecording(validRecording6));
+            assertRecordingState(catalog, validRecording6, INVALID);
+        }
+
+        final List<String> segmentFiles = new ArrayList<>();
+        addAll(segmentFiles, listSegmentFiles(archiveDir, validRecording3));
+        addAll(segmentFiles, listSegmentFiles(archiveDir, validRecording6));
+
+        assertTrue(segmentFiles.stream().allMatch(file -> new File(archiveDir, file).exists()),
+            "Non-existing segment files");
+
+        compact(out, archiveDir, epochClock);
+
+        try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
+        {
+            assertNoRecording(catalog, validRecording3);
+            assertNoRecording(catalog, validRecording6);
+
+            assertEquals(22, catalog.entryCount());
+            assertRecording(catalog, validRecording0, VALID, 0, 0, NULL_POSITION, 15, NULL_TIMESTAMP,
+                0, 2, "ch2", "src2");
+            assertRecording(catalog, validRecording51, VALID, 0, 0, 64 + PAGE_SIZE, 20, 777,
+                0, 20, "ch2", "src2");
+        }
+
+        assertTrue(segmentFiles.stream().noneMatch(file -> new File(archiveDir, file).exists()),
+            "Segment files not deleted");
+        Mockito.verify(out).println("Compaction result: deleted 2 records and reclaimed 384 bytes");
+    }
+
+    @Test
+    void capacityReturnsCurrentCapacityInBytesOfTheCatalog()
+    {
+        final long capacity;
+        try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
+        {
+            capacity = catalog.capacity();
+        }
+
+        assertEquals(capacity, capacity(archiveDir));
+    }
+
+    @Test
+    void capacityIncreasesCapacityOfTheCatalog()
+    {
+        final long capacity;
+        try (Catalog catalog = openCatalogReadOnly(archiveDir, epochClock))
+        {
+            capacity = catalog.capacity();
+        }
+
+        assertEquals(capacity * 2, capacity(archiveDir, capacity * 2));
+    }
+
+    @Test
+    void deleteOrphanedSegmentsDeletesSegmentFilesForAllRecordings() throws IOException
+    {
+        final long rec1;
+        final long rec2;
+        try (Catalog catalog = new Catalog(archiveDir, epochClock, 1024, true, null, null))
+        {
+            rec1 = catalog.addNewRecording(0, NULL_POSITION, NULL_TIMESTAMP, NULL_TIMESTAMP, 0,
+                SEGMENT_LENGTH, TERM_LENGTH, MTU_LENGTH, 42, 5, "some ch", "some ch", "rec1");
+
+            rec2 = catalog.addNewRecording(1_000_000, 1024 * 1024 * 1024, NULL_TIMESTAMP, NULL_TIMESTAMP, 0,
+                SEGMENT_LENGTH, TERM_LENGTH, MTU_LENGTH, 1, 1, "ch2", "ch2", "rec2");
+            catalog.invalidateRecording(rec2);
+        }
+
+        final File file11 = createFile(segmentFileName(rec1, -1));
+        final File file12 = createFile(segmentFileName(rec1, 0));
+        final File file13 = createFile(segmentFileName(rec1, Long.MAX_VALUE));
+        final File file14 = createFile(rec1 + "-will-be-deleted.rec");
+        final File file15 = createFile(rec1 + "-will-be-skipped.txt");
+        final File file16 = createFile(rec1 + "-.rec");
+        final File file17 = createFile(rec1 + "invalid_file_name.rec");
+
+        final File file21 = createFile(segmentFileName(rec2, 0));
+        final File file22 = createFile(segmentFileName(
+            rec2, segmentFileBasePosition(1_000_000, 1_000_000, TERM_LENGTH, SEGMENT_LENGTH)));
+        final File file23 = createFile(segmentFileName(
+            rec2, segmentFileBasePosition(1_000_000, 5_000_000, TERM_LENGTH, SEGMENT_LENGTH)));
+        final File file24 = createFile(segmentFileName(
+            rec2, segmentFileBasePosition(1_000_000, 1024 * 1024 * 1024, TERM_LENGTH, SEGMENT_LENGTH)));
+        final File file25 = createFile(segmentFileName(
+            rec2, segmentFileBasePosition(1_000_000, Long.MAX_VALUE, TERM_LENGTH, SEGMENT_LENGTH)));
+
+        deleteOrphanedSegments(out, archiveDir, epochClock);
+
+        assertFileExists(file12, file13, file15, file17);
+        assertFileDoesNotExist(file11, file14, file16);
+
+        assertFileExists(file22, file23, file24);
+        assertFileDoesNotExist(file21, file25);
     }
 
     private static List<Arguments> verifyChecksumClassValidation()
@@ -1174,9 +1365,29 @@ class ArchiveToolTests
     }
 
     private void assertRecording(
+        final Catalog catalog, final long recordingId, final CatalogEntryProcessor catalogEntryProcessor)
+    {
+        final MutableBoolean found = new MutableBoolean();
+        catalog
+            .forEach((recordingDescriptorOffset, headerEncoder, headerDecoder, descriptorEncoder, descriptorDecoder) ->
+            {
+                if (recordingId == descriptorDecoder.recordingId())
+                {
+                    found.set(true);
+
+                    catalogEntryProcessor.accept(
+                        recordingDescriptorOffset, headerEncoder, headerDecoder, descriptorEncoder, descriptorDecoder);
+                }
+            });
+
+        assertTrue(found.get(), () -> "recordingId=" + recordingId + " was not found");
+    }
+
+    private void assertRecording(
         final Catalog catalog,
         final long recordingId,
-        final byte valid,
+        final RecordingState state,
+        final int checksum,
         final long startPosition,
         final long stopPosition,
         final long startTimestamp,
@@ -1186,11 +1397,14 @@ class ArchiveToolTests
         final String strippedChannel,
         final String sourceIdentity)
     {
-        assertTrue(catalog.forEntry(
+        assertRecording(
+            catalog,
             recordingId,
-            (headerEncoder, headerDecoder, descriptorEncoder, descriptorDecoder) ->
+            (recordingDescriptorOffset, headerEncoder, headerDecoder, descriptorEncoder, descriptorDecoder) ->
             {
-                assertEquals(valid, headerDecoder.valid());
+                assertEquals(state, headerDecoder.state());
+                assertEquals(checksum, headerDecoder.checksum());
+
                 assertEquals(startPosition, descriptorDecoder.startPosition());
                 assertEquals(stopPosition, descriptorDecoder.stopPosition());
                 assertEquals(startTimestamp, descriptorDecoder.startTimestamp());
@@ -1202,14 +1416,44 @@ class ArchiveToolTests
                 assertEquals(strippedChannel, descriptorDecoder.strippedChannel());
                 assertNotNull(descriptorDecoder.originalChannel());
                 assertEquals(sourceIdentity, descriptorDecoder.sourceIdentity());
-            }));
+            });
     }
 
-    private void assertRecordingValidFlag(final Catalog catalog, final long recordingId)
+    private void assertRecordingState(final Catalog catalog, final long recordingId, final RecordingState expectedState)
     {
-        final CatalogEntryProcessor processor = (headerEncoder, headerDecoder, descriptorEncoder, descriptorDecoder) ->
-            assertEquals(VALID, headerDecoder.valid());
+        assertRecording(catalog, recordingId,
+            (recordingDescriptorOffset, headerEncoder, headerDecoder, descriptorEncoder, descriptorDecoder) ->
+            assertEquals(expectedState, headerDecoder.state()));
+    }
 
-        assertTrue(catalog.forEntry(recordingId, processor));
+    private void assertNoRecording(final Catalog catalog, final long recordingId)
+    {
+        final MutableBoolean found = new MutableBoolean();
+        catalog
+            .forEach((recordingDescriptorOffset, headerEncoder, headerDecoder, descriptorEncoder, descriptorDecoder) ->
+            {
+                if (recordingId == descriptorDecoder.recordingId())
+                {
+                    found.set(true);
+                }
+            });
+
+        assertFalse(found.get(), () -> "recordingId=" + recordingId + " was found");
+    }
+
+    private void assertFileExists(final File... files)
+    {
+        for (final File file : files)
+        {
+            assertTrue(file.exists(), () -> file.getName() + " does not exist");
+        }
+    }
+
+    private void assertFileDoesNotExist(final File... files)
+    {
+        for (final File file : files)
+        {
+            assertFalse(file.exists(), () -> file.getName() + " was not deleted");
+        }
     }
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014-2020 Real Logic Limited.
+ *  Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import static org.agrona.SystemUtil.*;
  * @see Aeron#addSubscription(String, int)
  * @see ChannelUri
  */
-public class ChannelUriStringBuilder
+public final class ChannelUriStringBuilder
 {
     /**
      * Can be used when the likes of session-id wants to reference another entity such as a tagged publication.

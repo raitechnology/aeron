@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -232,6 +232,27 @@ public final class DriverEventLogger
                     subscriptionId,
                     streamId,
                     sessionId);
+            }
+            finally
+            {
+                ringBuffer.commit(index);
+            }
+        }
+    }
+
+    public void logAddress(final DriverEventCode code, final InetSocketAddress address)
+    {
+        final int length = socketAddressLength(address);
+        final int captureLength = captureLength(length);
+        final int encodedLength = encodedLength(captureLength);
+
+        final ManyToOneRingBuffer ringBuffer = this.ringBuffer;
+        final int index = ringBuffer.tryClaim(toEventCodeId(code), encodedLength);
+        if (index > 0)
+        {
+            try
+            {
+                encode((UnsafeBuffer)ringBuffer.buffer(), index, captureLength, length, address);
             }
             finally
             {

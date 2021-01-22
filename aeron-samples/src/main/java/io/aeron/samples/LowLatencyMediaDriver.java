@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,11 @@ import static org.agrona.SystemUtil.loadPropertiesFiles;
  */
 public class LowLatencyMediaDriver
 {
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process which will be used for loading properties files.
+     */
     public static void main(final String[] args)
     {
         loadPropertiesFiles(args);

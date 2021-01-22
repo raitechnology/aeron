@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -267,7 +267,9 @@ inline bool aeron_publication_image_has_no_subscribers(aeron_publication_image_t
 inline bool aeron_publication_image_is_accepting_subscriptions(aeron_publication_image_t *image)
 {
     return image->conductor_fields.subscribable.length > 0 &&
-        image->conductor_fields.state == AERON_PUBLICATION_IMAGE_STATE_ACTIVE;
+        (image->conductor_fields.state == AERON_PUBLICATION_IMAGE_STATE_ACTIVE ||
+            (image->conductor_fields.state == AERON_PUBLICATION_IMAGE_STATE_DRAINING &&
+                !aeron_publication_image_is_drained(image)));
 }
 
 inline void aeron_publication_image_disconnect_endpoint(aeron_publication_image_t *image)

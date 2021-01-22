@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ typedef struct aeron_send_channel_endpoint_stct
         aeron_driver_managed_resource_t managed_resource;
         int32_t refcnt;
         bool has_reached_end_of_life;
-        const aeron_udp_channel_t *udp_channel;
+        aeron_udp_channel_t *udp_channel;
         aeron_send_channel_endpoint_status_t status;
     }
     conductor_fields;

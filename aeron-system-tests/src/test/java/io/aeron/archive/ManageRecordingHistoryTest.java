@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,16 +18,18 @@ package io.aeron.archive;
 import io.aeron.Aeron;
 import io.aeron.ChannelUriStringBuilder;
 import io.aeron.Publication;
-import io.aeron.archive.client.AeronArchive;
+import io.aeron.archive.client.*;
+import io.aeron.archive.codecs.RecordingSignal;
 import io.aeron.archive.status.RecordingPos;
 import io.aeron.driver.MediaDriver;
 import io.aeron.driver.ThreadingMode;
 import io.aeron.logbuffer.LogBufferDescriptor;
-import io.aeron.test.MediaDriverTestWatcher;
-import io.aeron.test.TestMediaDriver;
+import io.aeron.test.driver.MediaDriverTestWatcher;
+import io.aeron.test.driver.TestMediaDriver;
 import io.aeron.test.Tests;
 import org.agrona.CloseHelper;
 import org.agrona.SystemUtil;
+import org.agrona.collections.MutableReference;
 import org.agrona.concurrent.status.CountersReader;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,7 +79,7 @@ public class ManageRecordingHistoryTest
 
         archive = Archive.launch(
             new Archive.Context()
-                .maxCatalogEntries(MAX_CATALOG_ENTRIES)
+                .catalogCapacity(CATALOG_CAPACITY)
                 .segmentFileLength(SEGMENT_LENGTH)
                 .deleteArchiveOnStart(true)
                 .archiveDir(new File(SystemUtil.tmpDirName(), "archive"))
@@ -321,6 +323,47 @@ public class ManageRecordingHistoryTest
             assertEquals(2L, migratedSegments);
             assertEquals(startPosition, aeronArchive.getStartPosition(dstRecordingId));
             assertEquals(startPosition, aeronArchive.getStopPosition(srcRecordingId));
+        }
+    }
+
+    @Test
+    @Timeout(10)
+    public void shouldPurgeRecording()
+    {
+        final String messagePrefix = "Message-Prefix-";
+        final long targetPosition = (SEGMENT_LENGTH * 3L) + 1;
+
+        try (Publication publication = aeronArchive.addRecordedPublication(uriBuilder.build(), STREAM_ID))
+        {
+            final CountersReader counters = aeron.countersReader();
+            final int counterId = awaitRecordingCounterId(counters, publication.sessionId());
+            final long newRecordingId = RecordingPos.getRecordingId(counters, counterId);
+
+            offerToPosition(publication, messagePrefix, targetPosition);
+            awaitPosition(counters, counterId, publication.position());
+
+            final MutableReference<RecordingSignal> signalRef = new MutableReference<>();
+            final RecordingSignalConsumer consumer =
+                (controlSessionId, correlationId, recordingId, subscriptionId, position, transitionType) ->
+                {
+                    if (newRecordingId == recordingId)
+                    {
+                        signalRef.set(transitionType);
+                    }
+                };
+
+            final RecordingSignalAdapter adapter = new RecordingSignalAdapter(
+                aeronArchive.controlSessionId(),
+                ERROR_CONTROL_LISTENER,
+                consumer,
+                aeronArchive.controlResponsePoller().subscription(),
+                FRAGMENT_LIMIT);
+
+            aeronArchive.stopRecording(publication);
+            assertEquals(RecordingSignal.STOP, awaitSignal(signalRef, adapter));
+
+            aeronArchive.purgeRecording(newRecordingId);
+            assertEquals(RecordingSignal.DELETE, awaitSignal(signalRef, adapter));
         }
     }
 }

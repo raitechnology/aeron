@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ import io.aeron.driver.ThreadingMode;
 import io.aeron.logbuffer.Header;
 import io.aeron.security.*;
 import io.aeron.test.Tests;
+import io.aeron.test.cluster.ClusterTests;
+import io.aeron.test.cluster.StubClusteredService;
 import org.agrona.CloseHelper;
 import org.agrona.DirectBuffer;
 import org.agrona.ExpandableArrayBuffer;
@@ -45,7 +47,7 @@ import static org.mockito.Mockito.spy;
 
 public class AuthenticationTest
 {
-    private static final long MAX_CATALOG_ENTRIES = 1024;
+    private static final long CATALOG_CAPACITY = 1024 * 1024;
     private static final String CREDENTIALS_STRING = "username=\"admin\"|password=\"secret\"";
     private static final String CHALLENGE_STRING = "I challenge you!";
     private static final String PRINCIPAL_STRING = "I am THE Principal!";
@@ -475,7 +477,7 @@ public class AuthenticationTest
                 .dirDeleteOnStart(true)
                 .dirDeleteOnShutdown(false),
             new Archive.Context()
-                .maxCatalogEntries(MAX_CATALOG_ENTRIES)
+                .catalogCapacity(CATALOG_CAPACITY)
                 .threadingMode(ArchiveThreadingMode.SHARED)
                 .recordingEventsEnabled(false)
                 .deleteArchiveOnStart(true),

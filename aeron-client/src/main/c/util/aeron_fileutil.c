@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,10 +24,17 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "aeron_platform.h"
 #include "aeron_error.h"
 #include "aeron_fileutil.h"
+
+#ifdef _MSC_VER
+#define AERON_FILE_SEP '\\'
+#else
+#define AERON_FILE_SEP '/'
+#endif
 
 #if defined(AERON_COMPILER_MSVC)
 
@@ -36,6 +43,8 @@
 #include <stdio.h>
 #include <io.h>
 #include <direct.h>
+
+#include "aeron_alloc.h"
 
 #define PROT_READ  1
 #define PROT_WRITE 2
@@ -132,11 +141,7 @@ uint64_t aeron_usable_fs_space(const char *path)
 {
     ULARGE_INTEGER lpAvailableToCaller, lpTotalNumberOfBytes, lpTotalNumberOfFreeBytes;
 
-    if (!GetDiskFreeSpaceExA(
-        path,
-        &lpAvailableToCaller,
-        &lpTotalNumberOfBytes,
-        &lpTotalNumberOfFreeBytes))
+    if (!GetDiskFreeSpaceExA(path, &lpAvailableToCaller, &lpTotalNumberOfBytes, &lpTotalNumberOfFreeBytes))
     {
         return 0;
     }
@@ -149,7 +154,7 @@ int aeron_create_file(const char *path)
     int fd;
     int error = _sopen_s(&fd, path, _O_RDWR | _O_CREAT | _O_EXCL, _SH_DENYNO, _S_IREAD | _S_IWRITE);
 
-    if (error != NO_ERROR)
+    if (NO_ERROR != error)
     {
         return -1;
     }
@@ -159,19 +164,31 @@ int aeron_create_file(const char *path)
 
 int aeron_delete_directory(const char *dir)
 {
-    SHFILEOPSTRUCT file_op =
+    char dir_buffer[(AERON_MAX_PATH * 2) + 2] = { 0 };
+
+    size_t dir_length = strlen(dir);
+    if (dir_length > (AERON_MAX_PATH * 2))
     {
-        NULL,
-        FO_DELETE,
-        dir,
-        "",
-        FOF_NOCONFIRMATION |
-        FOF_NOERRORUI |
-        FOF_SILENT,
-        false,
-        0,
-        ""
-    };
+        return -1;
+    }
+
+    memcpy(dir_buffer, dir, dir_length);
+    dir_buffer[dir_length] = '\0';
+    dir_buffer[dir_length + 1] = '\0';
+    
+    SHFILEOPSTRUCT file_op =
+        {
+            NULL,
+            FO_DELETE,
+            dir_buffer,
+            NULL,
+            FOF_NOCONFIRMATION |
+            FOF_NOERRORUI |
+            FOF_SILENT,
+            false,
+            NULL,
+            NULL
+        };
 
     return SHFileOperation(&file_op);
 }
@@ -179,7 +196,7 @@ int aeron_delete_directory(const char *dir)
 int aeron_is_directory(const char *path)
 {
     const DWORD attributes = GetFileAttributes(path);
-    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+    return INVALID_FILE_ATTRIBUTES != attributes && (attributes & FILE_ATTRIBUTE_DIRECTORY);
 }
 
 #else
@@ -476,8 +493,7 @@ int aeron_raw_log_map_existing(aeron_mapped_raw_log_t *mapped_raw_log, const cha
         size_t term_length = (size_t)log_meta_data->term_length;
         size_t page_size = (size_t)log_meta_data->page_size;
 
-        if (aeron_logbuffer_check_term_length(term_length) < 0 ||
-            aeron_logbuffer_check_page_size(page_size) < 0)
+        if (aeron_logbuffer_check_term_length(term_length) < 0 || aeron_logbuffer_check_page_size(page_size) < 0)
         {
             aeron_unmap(&mapped_raw_log->mapped_file);
             return -1;
@@ -624,4 +640,28 @@ int aeron_default_path(char *path, size_t path_length)
     return snprintf(
         path, path_length, "%s%saeron-%s", tmp_dir(), has_file_separator_at_end(tmp_dir()) ? "" : "/", username());
 #endif
+}
+
+int aeron_file_resolve(const char *parent, const char *child, char *buffer, size_t buffer_len)
+{
+    int result = snprintf(buffer, buffer_len, "%s%c%s", parent, AERON_FILE_SEP, child);
+    buffer[buffer_len - 1] = '\0';
+
+    if (result < 0)
+    {
+        aeron_set_err(errno, "Failed to format resolved path");
+        return -1;
+    }
+    else if ((int)buffer_len <= result)
+    {
+        aeron_set_err(
+            EINVAL,
+            "Path name was truncated, required: %d, supplied: %d, result: %s",
+            result,
+            (int)buffer_len,
+            buffer);
+        return -1;
+    }
+
+    return result;
 }

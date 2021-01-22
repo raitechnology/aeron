@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -104,7 +104,7 @@ public class ArchiveLoggingAgentTest
             .aeronDirectoryName(aeronDirectoryName)
             .controlRequestChannel("aeron:udp?term-length=64k|endpoint=localhost:8010")
             .controlRequestStreamId(100)
-            .controlResponseChannel("aeron:udp?term-length=64k|endpoint=localhost:8020")
+            .controlResponseChannel("aeron:udp?term-length=64k|endpoint=localhost:0")
             .controlResponseStreamId(101);
 
         final Archive.Context archiveCtx = new Archive.Context()

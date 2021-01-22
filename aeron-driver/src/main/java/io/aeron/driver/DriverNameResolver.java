@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -297,6 +297,7 @@ class DriverNameResolver implements AutoCloseable, UdpNameResolutionTransport.Ud
 
             if (nowMs > (neighbor.timeOfLastActivityMs + neighborTimeoutMs))
             {
+                Neighbor.neighbourRemoved(nowMs, neighbor.socketAddress);
                 ArrayListUtil.fastUnorderedRemove(neighborList, i, lastIndex--);
                 workCount++;
             }
@@ -405,8 +406,10 @@ class DriverNameResolver implements AutoCloseable, UdpNameResolutionTransport.Ud
 
             try
             {
-                neighborList.add(new Neighbor(new InetSocketAddress(
-                    InetAddress.getByAddress(neighborAddress), port), timeOfLastActivity));
+                final Neighbor neighbor = new Neighbor(new InetSocketAddress(
+                    InetAddress.getByAddress(neighborAddress), port), timeOfLastActivity);
+                Neighbor.neighbourAdded(nowMs, neighbor.socketAddress);
+                neighborList.add(neighbor);
                 neighborsCounter.setOrdered(neighborList.size());
             }
             catch (final Exception ex)
@@ -438,7 +441,7 @@ class DriverNameResolver implements AutoCloseable, UdpNameResolutionTransport.Ud
 
     private void sendNeighborResolutions(final long nowMs)
     {
-        for (final DriverNameResolverCache.Iterator iter = cache.resetIterator(); iter.hasNext();)
+        for (final DriverNameResolverCache.Iterator iter = cache.resetIterator(); iter.hasNext(); )
         {
             byteBuffer.clear();
 
@@ -494,6 +497,16 @@ class DriverNameResolver implements AutoCloseable, UdpNameResolutionTransport.Ud
         {
             this.socketAddress = socketAddress;
             this.timeOfLastActivityMs = nowMs;
+        }
+
+        static void neighbourAdded(final long nowMs, final InetSocketAddress address)
+        {
+//            System.out.println(nowMs + " neighbour added: " + address);
+        }
+
+        static void neighbourRemoved(final long nowMs, final InetSocketAddress address)
+        {
+//            System.out.println(nowMs + " neighbour removed: " + address);
         }
     }
 }

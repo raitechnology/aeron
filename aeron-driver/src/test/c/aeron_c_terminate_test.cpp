@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,13 +23,8 @@
 extern "C"
 {
 #include "aeron_client.h"
+#include "aeron_cnc_file_descriptor.h"
 }
-
-#ifdef _MSC_VER
-#define AERON_FILE_SEP '\\'
-#else
-#define AERON_FILE_SEP '/'
-#endif
 
 using namespace aeron;
 
@@ -44,11 +39,11 @@ TEST_F(TerminateTest, shouldShutdownDriver)
     EmbeddedMediaDriver driver;
     driver.start();
 
-    char path[1024];
-    snprintf(path, sizeof(path), "%s%c%s", driver.directory(), AERON_FILE_SEP, AERON_CNC_FILE);
+    char path[AERON_MAX_PATH];
+    aeron_cnc_resolve_filename(driver.directory(), path, sizeof(path));
 
     ASSERT_EQ(1, aeron_context_request_driver_termination(
-            driver.directory(), (uint8_t *)TERMINATION_KEY, strlen(TERMINATION_KEY))) << aeron_errmsg();
+        driver.directory(), (uint8_t *)TERMINATION_KEY, strlen(TERMINATION_KEY))) << aeron_errmsg();
 
     driver.joinAndClose();
 }

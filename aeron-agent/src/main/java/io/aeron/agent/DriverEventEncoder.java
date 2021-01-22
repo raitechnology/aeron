@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,6 +80,17 @@ final class DriverEventEncoder
     {
         final int relativeOffset = encodeLogHeader(encodingBuffer, offset, captureLength, length);
         encodeTrailingString(encodingBuffer, offset + relativeOffset, captureLength, value);
+    }
+
+    static void encode(
+        final UnsafeBuffer encodingBuffer,
+        final int offset,
+        final int captureLength,
+        final int length,
+        final InetSocketAddress address)
+    {
+        final int relativeOffset = encodeLogHeader(encodingBuffer, offset, captureLength, length);
+        encodeSocketAddress(encodingBuffer, offset + relativeOffset, address);
     }
 
     static void encodePublicationRemoval(

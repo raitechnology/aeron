@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -254,5 +254,21 @@ class DriverEventLoggerTest
             LITTLE_ENDIAN));
         assertEquals(from.name() + STATE_SEPARATOR + to.name(), logBuffer.getStringAscii(
             encodedMsgOffset(recordOffset + LOG_HEADER_LENGTH + SIZE_OF_INT * 2 + SIZE_OF_LONG), LITTLE_ENDIAN));
+    }
+
+    @Test
+    void logAddress()
+    {
+        final int recordOffset = 64;
+        logBuffer.putLong(CAPACITY + TAIL_POSITION_OFFSET, recordOffset);
+        final DriverEventCode eventCode = NAME_RESOLUTION_NEIGHBOR_REMOVED;
+        final int captureLength = 12;
+
+        logger.logAddress(eventCode, new InetSocketAddress("localhost", 5656));
+
+        verifyLogHeader(logBuffer, recordOffset, toEventCodeId(eventCode), captureLength, captureLength);
+        assertEquals(5656, logBuffer.getInt(encodedMsgOffset(recordOffset + LOG_HEADER_LENGTH), LITTLE_ENDIAN));
+        assertEquals(4, logBuffer.getInt(
+            encodedMsgOffset(recordOffset + LOG_HEADER_LENGTH + SIZE_OF_INT), LITTLE_ENDIAN));
     }
 }

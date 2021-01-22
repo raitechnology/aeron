@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -332,7 +332,7 @@ class ClientConductor implements Agent
                 sessionId,
                 new UnsafeBufferPosition(counterValuesBuffer, subscriberPositionId),
                 logBuffers(correlationId, logFileName, subscription.channel()),
-                ctx.errorHandler(),
+                ctx.subscriberErrorHandler(),
                 sourceIdentity,
                 correlationId);
 
@@ -1067,13 +1067,12 @@ class ClientConductor implements Agent
 
         try
         {
-            final long nowNs = nanoClock.nanoTime();
-            workCount += checkTimeouts(nowNs);
+            workCount += checkTimeouts(nanoClock.nanoTime());
             workCount += driverEventsAdapter.receive(correlationId);
         }
-        catch (final Throwable throwable)
+        catch (final Throwable ex)
         {
-            handleError(throwable);
+            handleError(ex);
 
             if (driverEventsAdapter.isInvalid())
             {
@@ -1082,13 +1081,13 @@ class ClientConductor implements Agent
 
                 if (!isClientApiCall(correlationId))
                 {
-                    throw new IllegalStateException("Driver events adapter is invalid");
+                    throw new AeronException("Driver events adapter is invalid", ex);
                 }
             }
 
             if (isClientApiCall(correlationId))
             {
-                throw throwable;
+                throw ex;
             }
         }
 
@@ -1136,7 +1135,7 @@ class ClientConductor implements Agent
             if (Thread.interrupted())
             {
                 isTerminating = true;
-                throw new AgentTerminationException("thread interrupted");
+                LangUtil.rethrowUnchecked(new InterruptedException());
             }
         }
         while (deadlineNs - nanoClock.nanoTime() > 0);

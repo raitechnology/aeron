@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,8 +54,8 @@ int aeron_unmap(aeron_mapped_file_t *mapped_file);
 #include <io.h>
 #include <direct.h>
 #include <process.h>
-#include <WinSock2.h>
-#include <Windows.h>
+#include <winsock2.h>
+#include <windows.h>
 
 #define S_IRWXU 0
 #define S_IRWXG 0
@@ -70,8 +70,6 @@ typedef uint64_t (*aeron_usable_fs_space_func_t)(const char *path);
 int64_t aeron_file_length(const char *path);
 uint64_t aeron_usable_fs_space(const char *path);
 uint64_t aeron_usable_fs_space_disabled(const char *path);
-
-#define AERON_LOG_META_DATA_SECTION_INDEX (AERON_LOGBUFFER_PARTITION_COUNT)
 
 typedef struct aeron_mapped_raw_log_stct
 {
@@ -109,5 +107,7 @@ int aeron_raw_log_map_existing(aeron_mapped_raw_log_t *mapped_raw_log, const cha
 int aeron_raw_log_close(aeron_mapped_raw_log_t *mapped_raw_log, const char *filename);
 
 bool aeron_raw_log_free(aeron_mapped_raw_log_t *mapped_raw_log, const char *filename);
+
+int aeron_file_resolve(const char *parent, const char *child, char *buffer, size_t buffer_len);
 
 #endif //AERON_FILEUTIL_H

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,7 @@
  */
 package io.aeron.cluster.service;
 
-import io.aeron.Aeron;
-import io.aeron.AeronCounters;
-import io.aeron.CommonContext;
+import io.aeron.*;
 import io.aeron.archive.client.AeronArchive;
 import io.aeron.cluster.client.ClusterException;
 import io.aeron.cluster.codecs.mark.ClusterComponentType;
@@ -139,7 +137,7 @@ public final class ClusteredServiceContainer implements AutoCloseable
     /**
      * Configuration options for the consensus module and service container within a cluster.
      */
-    public static class Configuration
+    public static final class Configuration
     {
         /**
          * Type of snapshot for this service.
@@ -286,6 +284,16 @@ public final class ClusteredServiceContainer implements AutoCloseable
          * Default to true that this a responding service to client requests.
          */
         public static final boolean RESPONDER_SERVICE_DEFAULT = true;
+
+        /**
+         * Fragment limit to use when polling the log.
+         */
+        public static final String LOG_FRAGMENT_LIMIT_PROP_NAME = "aeron.cluster.log.fragment.limit";
+
+        /**
+         * Default fragment limit for polling log.
+         */
+        public static final int LOG_FRAGMENT_LIMIT_DEFAULT = 50;
 
         /**
          * Delegating {@link ErrorHandler} which will be first in the chain before delegating to the
@@ -482,6 +490,18 @@ public final class ClusteredServiceContainer implements AutoCloseable
         }
 
         /**
+         * The value {@link #LOG_FRAGMENT_LIMIT_DEFAULT} or system property
+         * {@link #LOG_FRAGMENT_LIMIT_PROP_NAME} if set.
+         *
+         * @return {@link #LOG_FRAGMENT_LIMIT_DEFAULT} or system property
+         * {@link #LOG_FRAGMENT_LIMIT_PROP_NAME} if set.
+         */
+        public static int logFragmentLimit()
+        {
+            return Integer.getInteger(LOG_FRAGMENT_LIMIT_PROP_NAME, LOG_FRAGMENT_LIMIT_DEFAULT);
+        }
+
+        /**
          * Create a new {@link ClusteredService} based on the configured {@link #SERVICE_CLASS_NAME_PROP_NAME}.
          *
          * @return a new {@link ClusteredService} based on the configured {@link #SERVICE_CLASS_NAME_PROP_NAME}.
@@ -534,7 +554,7 @@ public final class ClusteredServiceContainer implements AutoCloseable
      * The context will be owned by {@link ClusteredServiceAgent} after a successful
      * {@link ClusteredServiceContainer#launch(Context)} and closed via {@link ClusteredServiceContainer#close()}.
      */
-    public static class Context implements Cloneable
+    public static final class Context implements Cloneable
     {
         /**
          * Using an integer because there is no support for boolean. 1 is concluded, 0 is not concluded.
@@ -556,6 +576,7 @@ public final class ClusteredServiceContainer implements AutoCloseable
         private int snapshotStreamId = Configuration.snapshotStreamId();
         private int errorBufferLength = Configuration.errorBufferLength();
         private boolean isRespondingService = Configuration.isRespondingService();
+        private int logFragmentLimit = Configuration.logFragmentLimit();
 
         private CountDownLatch abortLatch;
         private ThreadFactory threadFactory;
@@ -675,6 +696,7 @@ public final class ClusteredServiceContainer implements AutoCloseable
                     new Aeron.Context()
                         .aeronDirectoryName(aeronDirectoryName)
                         .errorHandler(errorHandler)
+                        .subscriberErrorHandler(RethrowingErrorHandler.INSTANCE)
                         .awaitingIdleStrategy(YieldingIdleStrategy.INSTANCE)
                         .epochClock(epochClock));
 
@@ -795,7 +817,7 @@ public final class ClusteredServiceContainer implements AutoCloseable
         }
 
         /**
-         * Get the id for this clustered service.Services should be numbered from 0 and be contiguous.
+         * Get the id for this clustered service. Services should be numbered from 0 and be contiguous.
          *
          * @return the id for this clustered service.
          * @see Configuration#SERVICE_ID_PROP_NAME
@@ -1008,6 +1030,30 @@ public final class ClusteredServiceContainer implements AutoCloseable
         {
             this.isRespondingService = isRespondingService;
             return this;
+        }
+
+        /**
+         * Set the fragment limit to be used when polling the log {@link Subscription}.
+         *
+         * @param logFragmentLimit for this clustered service.
+         * @return this for a fluent API
+         * @see Configuration#LOG_FRAGMENT_LIMIT_DEFAULT
+         */
+        public Context logFragmentLimit(final int logFragmentLimit)
+        {
+            this.logFragmentLimit = logFragmentLimit;
+            return this;
+        }
+
+        /**
+         * Get the fragment limit to be used when polling the log {@link Subscription}.
+         *
+         * @return the fragment limit to be used when polling the log {@link Subscription}.
+         * @see Configuration#LOG_FRAGMENT_LIMIT_PROP_NAME
+         */
+        public int logFragmentLimit()
+        {
+            return logFragmentLimit;
         }
 
         /**

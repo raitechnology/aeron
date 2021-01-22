@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ public class ClientTimeoutFlyweight
      * Length of the header.
      */
     public static final int LENGTH = SIZE_OF_LONG;
-    static final int CLIENT_ID_FIELD_OFFSET = 0;
+    private static final int CLIENT_ID_FIELD_OFFSET = 0;
 
     private MutableDirectBuffer buffer;
     private int offset;

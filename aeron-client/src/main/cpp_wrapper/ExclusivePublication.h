@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,8 +58,10 @@ class ExclusivePublication
 public:
 
     /// @cond HIDDEN_SYMBOLS
-    ExclusivePublication(aeron_t *aeron, aeron_exclusive_publication_t *publication, CountersReader &countersReader) :
-        m_aeron(aeron), m_publication(publication), m_countersReader(countersReader), m_channel()
+    ExclusivePublication(aeron_t *aeron, aeron_exclusive_publication_t *publication) :
+        m_aeron(aeron),
+        m_publication(publication),
+        m_channel()
     {
         if (aeron_exclusive_publication_constants(m_publication, &m_constants) < 0)
         {
@@ -310,7 +312,21 @@ public:
      */
     std::vector<std::string> localSocketAddresses() const
     {
-        return LocalSocketAddressStatus::findAddresses(m_countersReader, channelStatus(), channelStatusId());
+        std::vector<std::string> localAddresses;
+        std::uint8_t buffer[AERON_CLIENT_MAX_LOCAL_ADDRESS_STR_LEN];
+        // Publications only have a single local address.
+        aeron_iovec_t iov;
+        iov.iov_base = buffer;
+        iov.iov_len = sizeof(buffer);
+
+        if (aeron_exclusive_publication_local_sockaddrs(m_publication, &iov, 1) < 0)
+        {
+            AERON_MAP_ERRNO_TO_SOURCED_EXCEPTION_AND_THROW;
+        }
+
+        localAddresses.push_back(std::string(reinterpret_cast<char *>(buffer)));
+
+        return localAddresses;
     }
 
     /**
@@ -330,7 +346,10 @@ public:
         const on_reserved_value_supplier_t &reservedValueSupplier)
     {
         std::int64_t position = aeron_exclusive_publication_offer(
-            m_publication, buffer.buffer() + offset, static_cast<std::size_t>(length), reservedValueSupplierCallback,
+            m_publication,
+            buffer.buffer() + offset,
+            static_cast<std::size_t>(length),
+            reservedValueSupplierCallback,
             (void *)&reservedValueSupplier);
 
         if (AERON_PUBLICATION_ERROR == position)
@@ -352,7 +371,15 @@ public:
      */
     inline std::int64_t offer(const concurrent::AtomicBuffer &buffer, util::index_t offset, util::index_t length)
     {
-        return offer(buffer, offset, length, DEFAULT_RESERVED_VALUE_SUPPLIER);
+        std::int64_t position = aeron_exclusive_publication_offer(
+            m_publication, buffer.buffer() + offset, static_cast<std::size_t>(length), NULL, NULL);
+
+        if (AERON_PUBLICATION_ERROR == position)
+        {
+            AERON_MAP_ERRNO_TO_SOURCED_EXCEPTION_AND_THROW;
+        }
+
+        return position;
     }
 
     /**
@@ -632,7 +659,6 @@ public:
 private:
     aeron_t *m_aeron;
     aeron_exclusive_publication_t *m_publication;
-    CountersReader &m_countersReader;
     aeron_publication_constants_t m_constants;
     std::string m_channel;
     std::unordered_map<std::int64_t, AsyncDestination *> m_pendingDestinations;

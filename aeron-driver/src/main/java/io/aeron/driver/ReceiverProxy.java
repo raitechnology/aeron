@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package io.aeron.driver;
 import io.aeron.driver.media.ReceiveChannelEndpoint;
 import io.aeron.driver.media.ReceiveDestinationTransport;
 import io.aeron.driver.media.UdpChannel;
-import org.agrona.concurrent.AgentTerminationException;
+import org.agrona.LangUtil;
 import org.agrona.concurrent.status.AtomicCounter;
 
 import java.net.InetSocketAddress;
@@ -205,7 +205,7 @@ final class ReceiverProxy
             Thread.yield();
             if (Thread.interrupted())
             {
-                throw new AgentTerminationException("unexpected interrupt");
+                LangUtil.rethrowUnchecked(new InterruptedException());
             }
         }
     }

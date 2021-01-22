@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -165,7 +165,7 @@ int aeron_udp_port_resolver(const char *port_str, bool optional)
         aeron_set_err(EINVAL, "port invalid: %s", port_str);
         return -1;
     }
-    else if (value >= UINT16_MAX)
+    else if (value > UINT16_MAX)
     {
         aeron_set_err(EINVAL, "port out of range: %s", port_str);
         return -1;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,6 +84,8 @@ int aeron_driver_sender_init(
     sender->sender_proxy.fail_counter =
         aeron_system_counter_addr(system_counters, AERON_SYSTEM_COUNTER_SENDER_PROXY_FAILS);
     sender->sender_proxy.threading_mode = context->threading_mode;
+    sender->sender_proxy.on_add_endpoint_func = context->sender_proxy_on_add_endpoint_func;
+    sender->sender_proxy.on_remove_endpoint_func = context->sender_proxy_on_remove_endpoint_func;
 
     sender->network_publications.array = NULL;
     sender->network_publications.length = 0;

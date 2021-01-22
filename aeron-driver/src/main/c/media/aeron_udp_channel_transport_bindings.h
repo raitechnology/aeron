@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 #ifndef AERON_UDP_CHANNEL_TRANSPORT_BINDINGS_H
 #define AERON_UDP_CHANNEL_TRANSPORT_BINDINGS_H
 
-#include "uri/aeron_uri.h"
+#include "uri/aeron_driver_uri.h"
 #include "aeron_socket.h"
 #include "aeron_driver_common.h"
 

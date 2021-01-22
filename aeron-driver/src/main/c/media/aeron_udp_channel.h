@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ int aeron_udp_channel_parse(
     aeron_udp_channel_t **channel,
     bool is_destination);
 
-void aeron_udp_channel_delete(const aeron_udp_channel_t *channel);
+void aeron_udp_channel_delete(aeron_udp_channel_t *channel);
 
 inline bool aeron_udp_channel_is_wildcard(aeron_udp_channel_t *channel)
 {

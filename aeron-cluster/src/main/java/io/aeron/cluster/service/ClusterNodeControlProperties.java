@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014-2020 Real Logic Limited.
+ *  Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ package io.aeron.cluster.service;
  * @see io.aeron.cluster.ClusterTool
  * @see ClusterMarkFile
  */
-public class ClusterNodeControlProperties
+public final class ClusterNodeControlProperties
 {
     public final String aeronDirectoryName;
     public final String controlChannel;

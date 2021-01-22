@@ -15,7 +15,9 @@
  */
 package io.aeron.test;
 
-import io.aeron.*;
+import io.aeron.Aeron;
+import io.aeron.Publication;
+import io.aeron.Subscription;
 import io.aeron.exceptions.AeronException;
 import io.aeron.exceptions.RegistrationException;
 import io.aeron.exceptions.TimeoutException;
@@ -110,6 +112,11 @@ public class Tests
             sb.append(" - ").append(message);
         }
 
+        System.out.println(appendStackTrace(sb).toString());
+    }
+
+    public static StringBuilder appendStackTrace(final StringBuilder sb)
+    {
         sb.append(System.lineSeparator());
 
         final StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
@@ -118,7 +125,7 @@ public class Tests
             sb.append(stackTraceElements[i]).append(System.lineSeparator());
         }
 
-        System.out.println(sb.toString());
+        return sb;
     }
 
     /**
@@ -180,6 +187,7 @@ public class Tests
 
     /**
      * Yield the thread then check for interrupt in a test.
+     *
      * @see #checkInterruptStatus()
      */
     public static void yield()
@@ -397,5 +405,17 @@ public class Tests
         {
             Tests.yield();
         }
+    }
+
+    public static String generateStringWithSuffix(final String prefix, final String suffix, final int repeatSuffixTimes)
+    {
+        final StringBuilder builder = new StringBuilder(prefix);
+
+        for (int i = 0; i < repeatSuffixTimes; i++)
+        {
+            builder.append(suffix);
+        }
+
+        return builder.toString();
     }
 }

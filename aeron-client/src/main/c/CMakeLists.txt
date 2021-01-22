@@ -1,4 +1,4 @@
-# Copyright 2014-2020 Real Logic Limited.
+# Copyright 2014-2021 Real Logic Limited.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -58,6 +58,8 @@ set(SOURCE
     concurrent/aeron_term_unblocker.c
     concurrent/aeron_thread.c
     protocol/aeron_udp_protocol.c
+    reports/aeron_loss_reporter.c
+    status/aeron_local_sockaddr.c
     util/aeron_arrayutil.c
     util/aeron_bitutil.c
     util/aeron_clock.c
@@ -71,10 +73,12 @@ set(SOURCE
     util/aeron_parse_util.c
     util/aeron_properties_util.c
     util/aeron_strutil.c
+    uri/aeron_uri.c
     aeron_agent.c
     aeron_alloc.c
     aeron_client.c
     aeron_client_conductor.c
+    aeron_cnc.c
     aeron_cnc_file_descriptor.c
     aeron_context.c
     aeron_counter.c
@@ -87,8 +91,7 @@ set(SOURCE
     aeron_subscription.c
     aeron_version.c
     aeron_windows.c
-    aeronc.c
-    )
+    aeronc.c)
 
 set(HEADERS
     collections/aeron_array_to_ptr_hash_map.h
@@ -123,6 +126,8 @@ set(HEADERS
     concurrent/aeron_term_unblocker.h
     concurrent/aeron_thread.h
     protocol/aeron_udp_protocol.h
+    reports/aeron_loss_reporter.h
+    status/aeron_local_sockaddr.h
     util/aeron_arrayutil.h
     util/aeron_bitutil.h
     util/aeron_clock.h
@@ -137,6 +142,7 @@ set(HEADERS
     util/aeron_platform.h
     util/aeron_properties_util.h
     util/aeron_strutil.h
+    uri/aeron_uri.h
     aeron_agent.h
     aeron_alloc.h
     aeron_client.h
@@ -154,8 +160,7 @@ set(HEADERS
     aeron_socket.h
     aeron_subscription.h
     aeron_windows.h
-    aeronc.h
-    )
+    aeronc.h)
 
 add_library(aeron SHARED ${SOURCE} ${HEADERS})
 target_include_directories(aeron
@@ -177,6 +182,15 @@ target_link_libraries(
     ${AERON_LIB_M_LIBS}
     ${CMAKE_THREAD_LIBS_INIT}
     ${AERON_LIB_WINSOCK_LIBS})
+
+target_link_libraries(
+    aeron_static INTERFACE
+    ${CMAKE_DL_LIBS}
+    ${AERON_LIB_M_LIBS}
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${AERON_LIB_WINSOCK_LIBS}
+    -rdynamic # Because dlsym() is used to load strategies.
+    )
 
 if (AERON_INSTALL_TARGETS)
     install(

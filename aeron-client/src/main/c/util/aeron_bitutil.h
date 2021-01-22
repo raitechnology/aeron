@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,13 @@
 #include <stddef.h>
 #include "util/aeron_platform.h"
 
-#if defined(AERON_COMPILER_MSVC)
+#if defined(_MSC_VER)
 #include <intrin.h>
+#pragma intrinsic(_BitScanForward)
+#pragma intrinsic(_BitScanReverse)
+#if defined(AERON_CPU_X64)
+#pragma intrinsic(_BitScanForward64)
+#endif
 #endif
 
 #define AERON_CACHE_LINE_LENGTH (64u)

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014-2020 Real Logic Limited.
+ *  Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import org.agrona.DirectBuffer;
 /**
  * Poller for the egress from a cluster to capture administration message details.
  */
-public class EgressPoller implements ControlledFragmentHandler
+public final class EgressPoller implements ControlledFragmentHandler
 {
     private final int fragmentLimit;
     private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();

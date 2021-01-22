@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.agrona.SystemUtil;
 import org.agrona.concurrent.SigInt;
 import org.agrona.concurrent.status.CountersReader;
 
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -94,7 +95,14 @@ public class AeronStat
      */
     private static final String COUNTER_CHANNEL = "channel";
 
-    public static void main(final String[] args) throws Exception
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process.
+     * @throws IOException if an error occurs writing to the console.
+     * @throws InterruptedException if the thread sleep delay is interrupted.
+     */
+    public static void main(final String[] args) throws IOException, InterruptedException
     {
         long delayMs = 1000L;
         boolean watch = true;
@@ -172,7 +180,8 @@ public class AeronStat
         }
     }
 
-    private static void workLoop(final long delayMs, final Runnable outputPrinter) throws Exception
+    private static void workLoop(final long delayMs, final Runnable outputPrinter)
+        throws IOException, InterruptedException
     {
         final AtomicBoolean running = new AtomicBoolean(true);
         SigInt.register(() -> running.set(false));
@@ -226,8 +235,8 @@ public class AeronStat
                     "filter by optional regex patterns:%n" +
                     "\t[type=<pattern>]%n" +
                     "\t[identity=<pattern>]%n" +
-                    "\t[sessionId=<pattern>]%n" +
-                    "\t[streamId=<pattern>]%n" +
+                    "\t[session=<pattern>]%n" +
+                    "\t[stream=<pattern>]%n" +
                     "\t[channel=<pattern>]%n");
 
                 System.exit(0);
@@ -235,7 +244,7 @@ public class AeronStat
         }
     }
 
-    private static void clearScreen() throws Exception
+    private static void clearScreen() throws IOException, InterruptedException
     {
         if (SystemUtil.isWindows())
         {

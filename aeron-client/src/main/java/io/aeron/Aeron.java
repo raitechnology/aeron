@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -674,6 +674,7 @@ public class Aeron implements AutoCloseable
         private AtomicBuffer cncMetaDataBuffer;
         private LogBuffersFactory logBuffersFactory;
         private ErrorHandler errorHandler;
+        private ErrorHandler subscriberErrorHandler;
         private AvailableImageHandler availableImageHandler;
         private UnavailableImageHandler unavailableImageHandler;
         private AvailableCounterHandler availableCounterHandler;
@@ -775,6 +776,11 @@ public class Aeron implements AutoCloseable
             if (null == errorHandler)
             {
                 errorHandler = Configuration.DEFAULT_ERROR_HANDLER;
+            }
+
+            if (null == subscriberErrorHandler)
+            {
+                subscriberErrorHandler = errorHandler;
             }
 
             if (null == driverProxy)
@@ -1081,13 +1087,43 @@ public class Aeron implements AutoCloseable
         }
 
         /**
-         * Get the error handler that will be called for errors reported back from the media driver.
+         * Get the error handler that will be called for errors reported back from the media driver or during poll
+         * operations.
          *
-         * @return the error handler that will be called for errors reported back from the media driver.
+         * @return the error handler that will be called for errors reported back from the media driver or poll
+         * operations.
          */
         public ErrorHandler errorHandler()
         {
             return errorHandler;
+        }
+
+        /**
+         * The error handler which will be used if an error occurs during the callback for poll operations such as
+         * {@link Subscription#poll(FragmentHandler, int)}. The default will be {@link #errorHandler()} if not set.
+         *
+         * @param errorHandler Method to handle objects of type Throwable.
+         * @return this for a fluent API.
+         * @see io.aeron.exceptions.DriverTimeoutException
+         * @see io.aeron.exceptions.RegistrationException
+         */
+        public Context subscriberErrorHandler(final ErrorHandler errorHandler)
+        {
+            this.subscriberErrorHandler = errorHandler;
+            return this;
+        }
+
+        /**
+         * This is the error handler which will be used if an error occurs during the callback for poll operations
+         * such as {@link Subscription#poll(FragmentHandler, int)}. The default will be {@link #errorHandler()} if not
+         * set. To have {@link Subscription#poll(FragmentHandler, int)} not delegate then set with
+         * {@link RethrowingErrorHandler}.
+         *
+         * @return the error handler that will be called for errors reported back from the media driver.
+         */
+        public ErrorHandler subscriberErrorHandler()
+        {
+            return subscriberErrorHandler;
         }
 
         /**

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +14,20 @@
  * limitations under the License.
  */
 
+#include "util/aeron_platform.h"
+
+#if defined(__linux__)
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 #include <inttypes.h>
 #include <errno.h>
+#if !defined(AERON_COMPILER_MSVC)
+#include <unistd.h>
+#endif
+
 #include "util/aeron_math.h"
 #include "util/aeron_arrayutil.h"
 #include "aeron_driver_conductor.h"
@@ -104,7 +115,7 @@ static bool aeron_driver_conductor_has_clashing_subscription(
     aeron_driver_conductor_t *conductor,
     const aeron_receive_channel_endpoint_t *endpoint,
     int32_t stream_id,
-    aeron_uri_subscription_params_t *params)
+    aeron_driver_uri_subscription_params_t *params)
 {
     for (size_t i = 0, length = conductor->network_subscriptions.length; i < length; i++)
     {
@@ -424,7 +435,7 @@ int32_t aeron_driver_conductor_next_session_id(aeron_driver_conductor_t *conduct
     const int32_t low = conductor->publication_reserved_session_id_low;
     const int32_t high = conductor->publication_reserved_session_id_high;
 
-    return (low <= conductor->next_session_id && conductor->next_session_id <= high) ?
+    return low <= conductor->next_session_id && conductor->next_session_id <= high ?
         aeron_add_wrap_i32(high, 1) : conductor->next_session_id;
 }
 
@@ -462,7 +473,7 @@ static int aeron_driver_conductor_speculate_next_session_id(
 }
 
 int aeron_confirm_publication_match(
-    const aeron_uri_publication_params_t *params,
+    const aeron_driver_uri_publication_params_t *params,
     const int32_t existing_session_id,
     const aeron_logbuffer_metadata_t *logbuffer_metadata)
 {
@@ -501,6 +512,9 @@ int aeron_confirm_publication_match(
 
 void aeron_driver_conductor_unlink_from_endpoint(aeron_driver_conductor_t *conductor, aeron_subscription_link_t *link)
 {
+    conductor->context->remove_subscription_cleanup_func(
+        link->registration_id, link->stream_id, link->channel_length, link->channel);
+
     aeron_receive_channel_endpoint_t *endpoint = link->endpoint;
 
     link->endpoint = NULL;
@@ -514,6 +528,14 @@ void aeron_driver_conductor_unlink_from_endpoint(aeron_driver_conductor_t *condu
     }
 
     aeron_driver_conductor_unlink_all_subscribable(conductor, link);
+}
+
+void aeron_driver_conductor_error(
+    aeron_driver_conductor_t *conductor, int error_code, const char *description, const char *message)
+{
+    aeron_distinct_error_log_record(&conductor->error_log, error_code, description, message);
+    aeron_counter_increment(conductor->errors_counter, 1);
+    aeron_set_err(0, "%s", "no error");
 }
 
 void aeron_client_delete(aeron_driver_conductor_t *conductor, aeron_client_t *client)
@@ -599,6 +621,45 @@ bool aeron_client_free(aeron_client_t *client)
     return true;
 }
 
+void on_available_image(
+    aeron_driver_conductor_t *conductor,
+    const int64_t correlation_id,
+    const int32_t stream_id,
+    const int32_t session_id,
+    const char *log_file_name,
+    const size_t log_file_name_length,
+    const int32_t subscriber_position_id,
+    const int64_t subscriber_registration_id,
+    const char *source_identity,
+    const size_t source_identity_length,
+    const size_t response_length,
+    char *response_buffer)
+{
+    aeron_image_buffers_ready_t *response = (aeron_image_buffers_ready_t *)response_buffer;
+
+    response->correlation_id = correlation_id;
+    response->stream_id = stream_id;
+    response->session_id = session_id;
+    response->subscriber_position_id = subscriber_position_id;
+    response->subscriber_registration_id = subscriber_registration_id;
+    response_buffer += sizeof(aeron_image_buffers_ready_t);
+
+    int32_t length_field;
+
+    length_field = (int32_t)log_file_name_length;
+    memcpy(response_buffer, &length_field, sizeof(length_field));
+    response_buffer += sizeof(int32_t);
+    memcpy(response_buffer, log_file_name, log_file_name_length);
+    response_buffer += AERON_ALIGN(log_file_name_length, sizeof(int32_t));
+
+    length_field = (int32_t)source_identity_length;
+    memcpy(response_buffer, &length_field, sizeof(length_field));
+    response_buffer += sizeof(int32_t);
+    memcpy(response_buffer, source_identity, source_identity_length);
+
+    aeron_driver_conductor_client_transmit(conductor, AERON_RESPONSE_ON_AVAILABLE_IMAGE, response, response_length);
+}
+
 void aeron_driver_conductor_on_available_image(
     aeron_driver_conductor_t *conductor,
     int64_t correlation_id,
@@ -611,38 +672,59 @@ void aeron_driver_conductor_on_available_image(
     const char *source_identity,
     size_t source_identity_length)
 {
-    char response_buffer[sizeof(aeron_image_buffers_ready_t) + (2 * AERON_MAX_PATH)];
-    char *ptr = response_buffer;
-    aeron_image_buffers_ready_t *response;
-    size_t response_length =
+    const size_t response_length =
         sizeof(aeron_image_buffers_ready_t) +
         AERON_ALIGN(log_file_name_length, sizeof(int32_t)) +
         source_identity_length +
         (2 * sizeof(int32_t));
 
-    response = (aeron_image_buffers_ready_t *)ptr;
+    if (response_length > sizeof(aeron_image_buffers_ready_t) + (2 * AERON_MAX_PATH))
+    {
+        char *buffer = NULL;
+        if (aeron_alloc((void **)&buffer, response_length) < 0)
+        {
+            char error_message[AERON_MAX_PATH];
+            int os_errno = aeron_errcode();
+            int code = os_errno < 0 ? -os_errno : AERON_ERROR_CODE_GENERIC_ERROR;
+            const char *error_description = os_errno > 0 ? strerror(os_errno) : aeron_error_code_str(code);
 
-    response->correlation_id = correlation_id;
-    response->stream_id = stream_id;
-    response->session_id = session_id;
-    response->subscriber_position_id = subscriber_position_id;
-    response->subscriber_registration_id = subscriber_registration_id;
-    ptr += sizeof(aeron_image_buffers_ready_t);
+            AERON_FORMAT_BUFFER(error_message, "(%d) %s: %s", os_errno, error_description, aeron_errmsg());
+            aeron_driver_conductor_error(conductor, code, "failed to allocate response buffer", error_message);
+            return;
+        }
 
-    int32_t length_field;
-
-    length_field = (int32_t)log_file_name_length;
-    memcpy(ptr, &length_field, sizeof(length_field));
-    ptr += sizeof(int32_t);
-    memcpy(ptr, log_file_name, log_file_name_length);
-    ptr += AERON_ALIGN(log_file_name_length, sizeof(int32_t));
-
-    length_field = (int32_t)source_identity_length;
-    memcpy(ptr, &length_field, sizeof(length_field));
-    ptr += sizeof(int32_t);
-    memcpy(ptr, source_identity, source_identity_length);
-
-    aeron_driver_conductor_client_transmit(conductor, AERON_RESPONSE_ON_AVAILABLE_IMAGE, response, response_length);
+        on_available_image(
+            conductor,
+            correlation_id,
+            stream_id,
+            session_id,
+            log_file_name,
+            log_file_name_length,
+            subscriber_position_id,
+            subscriber_registration_id,
+            source_identity,
+            source_identity_length,
+            response_length,
+            buffer);
+        aeron_free(buffer);
+    }
+    else
+    {
+        char buffer[sizeof(aeron_image_buffers_ready_t) + (2 * AERON_MAX_PATH)];
+        on_available_image(
+            conductor,
+            correlation_id,
+            stream_id,
+            session_id,
+            log_file_name,
+            log_file_name_length,
+            subscriber_position_id,
+            subscriber_registration_id,
+            source_identity,
+            source_identity_length,
+            response_length,
+            buffer);
+    }
 }
 
 void aeron_ipc_publication_entry_on_time_event(
@@ -659,13 +741,17 @@ bool aeron_ipc_publication_entry_has_reached_end_of_life(
 
 void aeron_ipc_publication_entry_delete(aeron_driver_conductor_t *conductor, aeron_ipc_publication_entry_t *entry)
 {
+    aeron_ipc_publication_t *publication = entry->publication;
+    conductor->context->remove_publication_cleanup_func(
+        publication->session_id, publication->stream_id, publication->channel_length, publication->channel);
+
     for (size_t i = 0, size = conductor->ipc_subscriptions.length; i < size; i++)
     {
         aeron_subscription_link_t *link = &conductor->ipc_subscriptions.array[i];
-        aeron_driver_conductor_unlink_subscribable(link, &entry->publication->conductor_fields.subscribable);
+        aeron_driver_conductor_unlink_subscribable(link, &publication->conductor_fields.subscribable);
     }
 
-    aeron_ipc_publication_close(&conductor->counters_manager, entry->publication);
+    aeron_ipc_publication_close(&conductor->counters_manager, publication);
     entry->publication = NULL;
 }
 
@@ -758,13 +844,17 @@ void aeron_driver_conductor_cleanup_spies(aeron_driver_conductor_t *conductor, a
 void aeron_driver_conductor_cleanup_network_publication(
     aeron_driver_conductor_t *conductor, aeron_network_publication_t *publication)
 {
+    const aeron_udp_channel_t *udp_channel = publication->endpoint->conductor_fields.udp_channel;
+    conductor->context->remove_publication_cleanup_func(
+        publication->session_id, publication->stream_id, udp_channel->uri_length, udp_channel->original_uri);
+
     aeron_driver_sender_proxy_on_remove_publication(conductor->context->sender_proxy, publication);
 }
 
 void aeron_send_channel_endpoint_entry_on_time_event(
     aeron_driver_conductor_t *conductor, aeron_send_channel_endpoint_entry_t *entry, int64_t now_ns, int64_t now_ms)
 {
-    /* nothing done here. Could linger if needed. */
+    /* Nothing done here. Could linger if needed. */
 }
 
 bool aeron_send_channel_endpoint_entry_has_reached_end_of_life(
@@ -787,7 +877,7 @@ bool aeron_send_channel_endpoint_entry_free(aeron_send_channel_endpoint_entry_t 
 void aeron_receive_channel_endpoint_entry_on_time_event(
     aeron_driver_conductor_t *conductor, aeron_receive_channel_endpoint_entry_t *entry, int64_t now_ns, int64_t now_ms)
 {
-    /* nothing done here. could linger if needed. */
+    /* Nothing done here. could linger if needed. */
 }
 
 bool aeron_receive_channel_endpoint_entry_has_reached_end_of_life(
@@ -805,6 +895,14 @@ void aeron_receive_channel_endpoint_entry_delete(
 
         if (entry->endpoint == image->endpoint)
         {
+            const aeron_receive_channel_endpoint_t *endpoint = image->endpoint;
+            const aeron_udp_channel_t *udp_channel = endpoint->conductor_fields.udp_channel;
+            conductor->context->remove_image_cleanup_func(
+                image->conductor_fields.managed_resource.registration_id,
+                image->session_id,
+                image->stream_id,
+                udp_channel->uri_length,
+                udp_channel->original_uri);
             aeron_publication_image_disconnect_endpoint(image);
         }
     }
@@ -832,13 +930,15 @@ bool aeron_publication_image_entry_has_reached_end_of_life(
 void aeron_publication_image_entry_delete(
     aeron_driver_conductor_t *conductor, aeron_publication_image_entry_t *entry)
 {
+    aeron_publication_image_t *image = entry->image;
+
     for (size_t i = 0, size = conductor->network_subscriptions.length; i < size; i++)
     {
         aeron_subscription_link_t *link = &conductor->network_subscriptions.array[i];
-        aeron_driver_conductor_unlink_subscribable(link, &entry->image->conductor_fields.subscribable);
+        aeron_driver_conductor_unlink_subscribable(link, &image->conductor_fields.subscribable);
     }
 
-    aeron_publication_image_close(&conductor->counters_manager, entry->image);
+    aeron_publication_image_close(&conductor->counters_manager, image);
     entry->image = NULL;
 }
 
@@ -958,7 +1058,7 @@ void aeron_driver_conductor_on_check_managed_resources(
 aeron_ipc_publication_t *aeron_driver_conductor_get_or_add_ipc_publication(
     aeron_driver_conductor_t *conductor,
     aeron_client_t *client,
-    aeron_uri_publication_params_t *params,
+    aeron_driver_uri_publication_params_t *params,
     int64_t registration_id,
     int32_t stream_id,
     size_t uri_length,
@@ -1082,17 +1182,19 @@ aeron_ipc_publication_t *aeron_driver_conductor_get_or_add_ipc_publication(
                 }
 
                 if (aeron_ipc_publication_create(
-                        &publication,
-                        conductor->context,
-                        session_id,
-                        stream_id,
-                        registration_id,
-                        &pub_pos_position,
-                        &pub_lmt_position,
-                        initial_term_id,
-                        params,
-                        is_exclusive,
-                        &conductor->system_counters) >= 0)
+                    &publication,
+                    conductor->context,
+                    session_id,
+                    stream_id,
+                    registration_id,
+                    &pub_pos_position,
+                    &pub_lmt_position,
+                    initial_term_id,
+                    params,
+                    is_exclusive,
+                    &conductor->system_counters,
+                    uri_length,
+                    uri) >= 0)
                 {
                     aeron_publication_link_t *link = &client->publication_links.array[client->publication_links.length];
 
@@ -1128,7 +1230,7 @@ aeron_network_publication_t *aeron_driver_conductor_get_or_add_network_publicati
     aeron_send_channel_endpoint_t *endpoint,
     size_t uri_length,
     const char *uri,
-    aeron_uri_publication_params_t *params,
+    aeron_driver_uri_publication_params_t *params,
     int64_t registration_id,
     int32_t stream_id,
     bool is_exclusive)
@@ -1378,7 +1480,7 @@ aeron_receive_channel_endpoint_t *aeron_driver_conductor_find_receive_channel_en
     return NULL;
 }
 
-/* this should be re-usable if/when we decide to reuse transports with MDS */
+/* This should be re-usable if/when we decide to reuse transports with MDS */
 int aeron_driver_conductor_update_and_check_ats_status(
     aeron_driver_context_t *context, aeron_udp_channel_t *channel, const aeron_udp_channel_t *existing_channel)
 {
@@ -1604,7 +1706,32 @@ void aeron_driver_conductor_client_transmit(
     aeron_driver_conductor_t *conductor, int32_t msg_type_id, const void *msg, size_t length)
 {
     conductor->context->to_client_interceptor_func(conductor, msg_type_id, msg, length);
-    aeron_broadcast_transmitter_transmit(&conductor->to_clients, msg_type_id, msg, length);
+    if (aeron_broadcast_transmitter_transmit(&conductor->to_clients, msg_type_id, msg, length) < 0)
+    {
+        char error_message[AERON_MAX_PATH];
+
+        AERON_FORMAT_BUFFER(error_message, "msg_type_id=%d,  length=%" PRIu32, msg_type_id, (uint32_t)length);
+        aeron_driver_conductor_error(conductor, AERON_ERROR_CODE_GENERIC_ERROR, "failed to transmit message", error_message);
+    }
+}
+
+void on_error(
+    aeron_driver_conductor_t *conductor,
+    const int32_t error_code,
+    const char *message,
+    const size_t length,
+    const int64_t correlation_id,
+    const size_t response_length,
+    char *response_buffer)
+{
+    aeron_error_response_t *response = (aeron_error_response_t *)response_buffer;
+
+    response->offending_command_correlation_id = correlation_id;
+    response->error_code = error_code;
+    response->error_message_length = (int32_t)length;
+    memcpy(response_buffer + sizeof(aeron_error_response_t), message, length);
+
+    aeron_driver_conductor_client_transmit(conductor, AERON_RESPONSE_ON_ERROR, response, response_length);
 }
 
 void aeron_driver_conductor_on_error(
@@ -1614,31 +1741,46 @@ void aeron_driver_conductor_on_error(
     size_t length,
     int64_t correlation_id)
 {
-    char response_buffer[sizeof(aeron_error_response_t) + AERON_MAX_PATH];
-    aeron_error_response_t *response = (aeron_error_response_t *)response_buffer;
+    const size_t response_length = sizeof(aeron_error_response_t) + length;
 
-    response->offending_command_correlation_id = correlation_id;
-    response->error_code = error_code;
-    response->error_message_length = (int32_t)length;
-    memcpy(response_buffer + sizeof(aeron_error_response_t), message, length);
+    if (response_length > sizeof(aeron_error_response_t) + AERON_MAX_PATH)
+    {
+        char *buffer = NULL;
+        if (aeron_alloc((void **)&buffer, response_length) < 0)
+        {
+            char error_message[AERON_MAX_PATH];
+            int os_errno = aeron_errcode();
+            int code = os_errno < 0 ? -os_errno : AERON_ERROR_CODE_GENERIC_ERROR;
+            const char *error_description = os_errno > 0 ? strerror(os_errno) : aeron_error_code_str(code);
 
-    aeron_driver_conductor_client_transmit(
-        conductor, AERON_RESPONSE_ON_ERROR, response, sizeof(aeron_error_response_t) + length);
+            AERON_FORMAT_BUFFER(error_message, "(%d) %s: %s", os_errno, error_description, aeron_errmsg());
+            aeron_driver_conductor_error(conductor, code, "failed to allocate response buffer", error_message);
+            return;
+        }
+        on_error(conductor, error_code, message, length, correlation_id, response_length, buffer);
+        aeron_free(buffer);
+    }
+    else
+    {
+        char buffer[sizeof(aeron_error_response_t) + AERON_MAX_PATH];
+        on_error(conductor, error_code, message, length, correlation_id, response_length, buffer);
+    }
 }
 
-void aeron_driver_conductor_on_publication_ready(
+void on_publication_ready(
     aeron_driver_conductor_t *conductor,
-    int64_t registration_id,
-    int64_t original_registration_id,
-    int32_t stream_id,
-    int32_t session_id,
-    int32_t position_limit_counter_id,
-    int32_t channel_status_indicator_id,
-    bool is_exclusive,
+    const int64_t registration_id,
+    const int64_t original_registration_id,
+    const int32_t stream_id,
+    const int32_t session_id,
+    const int32_t position_limit_counter_id,
+    const int32_t channel_status_indicator_id,
+    const bool is_exclusive,
     const char *log_file_name,
-    size_t log_file_name_length)
+    const size_t log_file_name_length,
+    const size_t response_length,
+    char *response_buffer)
 {
-    char response_buffer[sizeof(aeron_publication_buffers_ready_t) + AERON_MAX_PATH];
     aeron_publication_buffers_ready_t *response = (aeron_publication_buffers_ready_t *)response_buffer;
 
     response->correlation_id = registration_id;
@@ -1654,7 +1796,70 @@ void aeron_driver_conductor_on_publication_ready(
         conductor,
         is_exclusive ? AERON_RESPONSE_ON_EXCLUSIVE_PUBLICATION_READY : AERON_RESPONSE_ON_PUBLICATION_READY,
         response,
-        sizeof(aeron_publication_buffers_ready_t) + log_file_name_length);
+        response_length);
+}
+
+void aeron_driver_conductor_on_publication_ready(
+    aeron_driver_conductor_t *conductor,
+    int64_t registration_id,
+    int64_t original_registration_id,
+    int32_t stream_id,
+    int32_t session_id,
+    int32_t position_limit_counter_id,
+    int32_t channel_status_indicator_id,
+    bool is_exclusive,
+    const char *log_file_name,
+    size_t log_file_name_length)
+{
+    const size_t response_length = sizeof(aeron_publication_buffers_ready_t) + log_file_name_length;
+
+    if (response_length > sizeof(aeron_publication_buffers_ready_t) + AERON_MAX_PATH)
+    {
+        char *buffer = NULL;
+        if (aeron_alloc((void **)&buffer, response_length) < 0)
+        {
+            char error_message[AERON_MAX_PATH];
+            int os_errno = aeron_errcode();
+            int code = os_errno < 0 ? -os_errno : AERON_ERROR_CODE_GENERIC_ERROR;
+            const char *error_description = os_errno > 0 ? strerror(os_errno) : aeron_error_code_str(code);
+
+            AERON_FORMAT_BUFFER(error_message, "(%d) %s: %s", os_errno, error_description, aeron_errmsg());
+            aeron_driver_conductor_error(conductor, code, "failed to allocate response buffer", error_message);
+            return;
+        }
+
+        on_publication_ready(
+            conductor,
+            registration_id,
+            original_registration_id,
+            stream_id,
+            session_id,
+            position_limit_counter_id,
+            channel_status_indicator_id,
+            is_exclusive,
+            log_file_name,
+            log_file_name_length,
+            response_length,
+            buffer);
+        aeron_free(buffer);
+    }
+    else
+    {
+        char buffer[sizeof(aeron_publication_buffers_ready_t) + AERON_MAX_PATH];
+        on_publication_ready(
+            conductor,
+            registration_id,
+            original_registration_id,
+            stream_id,
+            session_id,
+            position_limit_counter_id,
+            channel_status_indicator_id,
+            is_exclusive,
+            log_file_name,
+            log_file_name_length,
+            response_length,
+            buffer);
+    }
 }
 
 void aeron_driver_conductor_on_subscription_ready(
@@ -1718,15 +1923,16 @@ void aeron_driver_conductor_on_client_timeout(aeron_driver_conductor_t *conducto
         conductor, AERON_RESPONSE_ON_CLIENT_TIMEOUT, response, sizeof(aeron_client_timeout_t));
 }
 
-void aeron_driver_conductor_on_unavailable_image(
+void on_unavailable_image(
     aeron_driver_conductor_t *conductor,
-    int64_t correlation_id,
-    int64_t subscription_registration_id,
-    int32_t stream_id,
+    const int64_t correlation_id,
+    const int64_t subscription_registration_id,
+    const int32_t stream_id,
     const char *channel,
-    size_t channel_length)
+    const size_t channel_length,
+    const size_t response_length,
+    char *response_buffer)
 {
-    char response_buffer[sizeof(aeron_image_message_t) + AERON_MAX_PATH];
     aeron_image_message_t *response = (aeron_image_message_t *)response_buffer;
 
     response->correlation_id = correlation_id;
@@ -1735,16 +1941,58 @@ void aeron_driver_conductor_on_unavailable_image(
     response->channel_length = (int32_t)channel_length;
     memcpy(response_buffer + sizeof(aeron_image_message_t), channel, channel_length);
 
-    aeron_driver_conductor_client_transmit(
-        conductor, AERON_RESPONSE_ON_UNAVAILABLE_IMAGE, response, sizeof(aeron_image_message_t) + channel_length);
+    aeron_driver_conductor_client_transmit(conductor, AERON_RESPONSE_ON_UNAVAILABLE_IMAGE, response, response_length);
 }
 
-void aeron_driver_conductor_error(
-    aeron_driver_conductor_t *conductor, int error_code, const char *description, const char *message)
+void aeron_driver_conductor_on_unavailable_image(
+    aeron_driver_conductor_t *conductor,
+    int64_t correlation_id,
+    int64_t subscription_registration_id,
+    int32_t stream_id,
+    const char *channel,
+    size_t channel_length)
 {
-    aeron_distinct_error_log_record(&conductor->error_log, error_code, description, message);
-    aeron_counter_increment(conductor->errors_counter, 1);
-    aeron_set_err(0, "%s", "no error");
+    const size_t response_length = sizeof(aeron_image_message_t) + channel_length;
+
+    if (response_length > sizeof(aeron_image_message_t) + AERON_MAX_PATH)
+    {
+        char *buffer = NULL;
+        if (aeron_alloc((void **)&buffer, response_length) < 0)
+        {
+            char error_message[AERON_MAX_PATH];
+            int os_errno = aeron_errcode();
+            int code = os_errno < 0 ? -os_errno : AERON_ERROR_CODE_GENERIC_ERROR;
+            const char *error_description = os_errno > 0 ? strerror(os_errno) : aeron_error_code_str(code);
+
+            AERON_FORMAT_BUFFER(error_message, "(%d) %s: %s", os_errno, error_description, aeron_errmsg());
+            aeron_driver_conductor_error(conductor, code, "failed to allocate response buffer", error_message);
+            return;
+        }
+
+        on_unavailable_image(
+            conductor,
+            correlation_id,
+            subscription_registration_id,
+            stream_id,
+            channel,
+            channel_length,
+            response_length,
+            buffer);
+        aeron_free(buffer);
+    }
+    else
+    {
+        char buffer[sizeof(aeron_image_message_t) + AERON_MAX_PATH];
+        on_unavailable_image(
+            conductor,
+            correlation_id,
+            subscription_registration_id,
+            stream_id,
+            channel,
+            channel_length,
+            response_length,
+            buffer);
+    }
 }
 
 void aeron_driver_conductor_on_command(int32_t msg_type_id, const void *message, size_t length, void *clientd)
@@ -2322,12 +2570,12 @@ int aeron_driver_conductor_on_add_ipc_publication(
 {
     int64_t correlation_id = command->correlated.correlation_id;
     const char *uri = (const char *)command + sizeof(aeron_publication_command_t);
-    size_t uri_length = command->channel_length;
+    size_t uri_length = (size_t)command->channel_length;
     aeron_uri_t aeron_uri_params;
-    aeron_uri_publication_params_t params;
+    aeron_driver_uri_publication_params_t params;
 
     if (aeron_uri_parse(uri_length, uri, &aeron_uri_params) < 0 ||
-        aeron_uri_publication_params(&aeron_uri_params, &params, conductor, is_exclusive) < 0)
+        aeron_diver_uri_publication_params(&aeron_uri_params, &params, conductor, is_exclusive) < 0)
     {
         goto error_cleanup;
     }
@@ -2402,10 +2650,10 @@ int aeron_driver_conductor_on_add_network_publication(
     aeron_udp_channel_t *udp_channel = NULL;
     const char *uri = (const char *)command + sizeof(aeron_publication_command_t);
     size_t uri_length = (size_t)command->channel_length;
-    aeron_uri_publication_params_t params;
+    aeron_driver_uri_publication_params_t params;
 
     if (aeron_udp_channel_parse(uri_length, uri, &conductor->name_resolver, &udp_channel, false) < 0 ||
-        aeron_uri_publication_params(&udp_channel->uri, &params, conductor, is_exclusive) < 0)
+        aeron_diver_uri_publication_params(&udp_channel->uri, &params, conductor, is_exclusive) < 0)
     {
         aeron_udp_channel_delete(udp_channel);
         return -1;
@@ -2548,11 +2796,11 @@ int aeron_driver_conductor_on_add_ipc_subscription(
 {
     const char *uri = (const char *)command + sizeof(aeron_subscription_command_t);
     aeron_uri_t aeron_uri_params;
-    aeron_uri_subscription_params_t params;
-    size_t uri_length = command->channel_length;
+    aeron_driver_uri_subscription_params_t params;
+    size_t uri_length = (size_t)command->channel_length;
 
     if (aeron_uri_parse(uri_length, uri, &aeron_uri_params) < 0 ||
-        aeron_uri_subscription_params(&aeron_uri_params, &params, conductor) < 0)
+        aeron_driver_uri_subscription_params(&aeron_uri_params, &params, conductor) < 0)
     {
         goto error_cleanup;
     }
@@ -2598,7 +2846,7 @@ int aeron_driver_conductor_on_add_ipc_subscription(
         aeron_ipc_publication_t *publication = publication_entry->publication;
 
         if (command->stream_id == publication_entry->publication->stream_id &&
-            AERON_IPC_PUBLICATION_STATE_ACTIVE == publication->conductor_fields.state &&
+            aeron_ipc_publication_is_accepting_subscriptions(publication) &&
             (!link->has_session_id || (link->session_id == publication->session_id)))
         {
             if (aeron_driver_conductor_link_subscribable(
@@ -2633,11 +2881,11 @@ int aeron_driver_conductor_on_add_spy_subscription(
 {
     aeron_udp_channel_t *udp_channel = NULL;
     const char *uri = (const char *)command + sizeof(aeron_subscription_command_t) + strlen(AERON_SPY_PREFIX);
-    aeron_uri_subscription_params_t params;
+    aeron_driver_uri_subscription_params_t params;
 
     if (aeron_udp_channel_parse(
         command->channel_length - strlen(AERON_SPY_PREFIX), uri, &conductor->name_resolver, &udp_channel, false) < 0 ||
-        aeron_uri_subscription_params(&udp_channel->uri, &params, conductor) < 0)
+        aeron_driver_uri_subscription_params(&udp_channel->uri, &params, conductor) < 0)
     {
         return -1;
     }
@@ -2694,7 +2942,7 @@ int aeron_driver_conductor_on_add_spy_subscription(
 
         if (command->stream_id == publication->stream_id &&
             endpoint == publication->endpoint &&
-            AERON_NETWORK_PUBLICATION_STATE_ACTIVE == publication->conductor_fields.state &&
+            aeron_network_publication_is_accepting_subscriptions(publication) &&
             (!link->has_session_id || (link->session_id == publication->session_id)))
         {
             if (aeron_driver_conductor_link_subscribable(
@@ -2723,13 +2971,13 @@ int aeron_driver_conductor_on_add_network_subscription(
     aeron_driver_conductor_t *conductor, aeron_subscription_command_t *command)
 {
     aeron_udp_channel_t *udp_channel = NULL;
-    size_t uri_length = command->channel_length;
+    size_t uri_length = (size_t)command->channel_length;
     int64_t correlation_id = command->correlated.correlation_id;
     const char *uri = (const char *)command + sizeof(aeron_subscription_command_t);
-    aeron_uri_subscription_params_t params;
+    aeron_driver_uri_subscription_params_t params;
 
     if (aeron_udp_channel_parse(uri_length, uri, &conductor->name_resolver, &udp_channel, false) < 0 ||
-        aeron_uri_subscription_params(&udp_channel->uri, &params, conductor) < 0)
+        aeron_driver_uri_subscription_params(&udp_channel->uri, &params, conductor) < 0)
     {
         aeron_udp_channel_delete(udp_channel);
         return -1;
@@ -2749,7 +2997,7 @@ int aeron_driver_conductor_on_add_network_subscription(
         return -1;
     }
 
-    // If we found an existing endpoint free the channel.  Channel is no longer required beyond this point.
+    // If we found an existing endpoint free the channel. Channel is no longer required beyond this point.
     if (endpoint->conductor_fields.udp_channel != udp_channel)
     {
         aeron_udp_channel_delete(udp_channel);
@@ -2819,7 +3067,8 @@ int aeron_driver_conductor_on_add_network_subscription(
         {
             aeron_publication_image_t *image = conductor->publication_images.array[i].image;
 
-            if (endpoint == image->endpoint && command->stream_id == image->stream_id &&
+            if (endpoint == image->endpoint &&
+                command->stream_id == image->stream_id &&
                 aeron_publication_image_is_accepting_subscriptions(image))
             {
                 char source_identity[AERON_MAX_PATH];
@@ -2833,7 +3082,7 @@ int aeron_driver_conductor_on_add_network_subscription(
                     image->conductor_fields.managed_resource.registration_id,
                     image->session_id,
                     image->stream_id,
-                    aeron_counter_get(image->rcv_pos_position.value_addr),
+                    aeron_publication_image_join_position(image),
                     now_ns,
                     source_identity_length,
                     source_identity,
@@ -3500,7 +3749,7 @@ void aeron_driver_conductor_on_linger_buffer(void *clientd, void *item)
     if (AERON_THREADING_MODE_IS_SHARED_OR_INVOKER(conductor->context->threading_mode))
     {
         aeron_free(command);
-        /* do not know where it came from originally, so just free command on the conductor duty cycle */
+        /* Do not know where it came from originally, so just free command on the conductor duty cycle */
     }
 }
 

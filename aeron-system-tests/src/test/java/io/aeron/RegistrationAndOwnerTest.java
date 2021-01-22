@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,8 @@ package io.aeron;
 
 import io.aeron.driver.MediaDriver;
 import io.aeron.test.*;
+import io.aeron.test.driver.MediaDriverTestWatcher;
+import io.aeron.test.driver.TestMediaDriver;
 import org.agrona.concurrent.status.CountersReader;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -55,7 +57,8 @@ public class RegistrationAndOwnerTest
             .errorHandler(Tests::onError)
             .dirDeleteOnStart(true);
 
-        try (TestMediaDriver ignore = TestMediaDriver.launch(ctx, testWatcher);
+        try (
+            TestMediaDriver ignore = TestMediaDriver.launch(ctx, testWatcher);
             Aeron aeron = Aeron.connect();
             Subscription subscription = aeron.addSubscription(channel, STREAM_ID);
             Publication publication = aeron.addPublication(channel, STREAM_ID);

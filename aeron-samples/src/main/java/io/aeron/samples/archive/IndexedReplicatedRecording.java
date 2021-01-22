@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,14 +59,14 @@ public class IndexedReplicatedRecording implements AutoCloseable
     static final int MESSAGE_BURST_COUNT = 10_000;
 
     private static final int TERM_LENGTH = LogBufferDescriptor.TERM_MIN_LENGTH;
-    private static final int MAX_CATALOG_ENTRIES = 64;
+    private static final long CATALOG_CAPACITY = 64 * 1024;
     private static final int SRC_CONTROL_STREAM_ID = AeronArchive.Configuration.CONTROL_STREAM_ID_DEFAULT;
     private static final String SRC_CONTROL_REQUEST_CHANNEL = "aeron:udp?endpoint=localhost:8090";
-    private static final String SRC_CONTROL_RESPONSE_CHANNEL = "aeron:udp?endpoint=localhost:8091";
+    private static final String SRC_CONTROL_RESPONSE_CHANNEL = "aeron:udp?endpoint=localhost:0";
     private static final String DST_CONTROL_REQUEST_CHANNEL = "aeron:udp?endpoint=localhost:8095";
-    private static final String DST_CONTROL_RESPONSE_CHANNEL = "aeron:udp?endpoint=localhost:8096";
-    private static final String SRC_REPLICATION_CHANNEL = "aeron:udp?endpoint=localhost:8040";
-    private static final String DST_REPLICATION_CHANNEL = "aeron:udp?endpoint=localhost:8041";
+    private static final String DST_CONTROL_RESPONSE_CHANNEL = "aeron:udp?endpoint=localhost:0";
+    private static final String SRC_REPLICATION_CHANNEL = "aeron:udp?endpoint=localhost:0";
+    private static final String DST_REPLICATION_CHANNEL = "aeron:udp?endpoint=localhost:0";
 
     private static final int LIVE_STREAM_ID = 1033;
     private static final String LIVE_CHANNEL = new ChannelUriStringBuilder()
@@ -107,7 +107,7 @@ public class IndexedReplicatedRecording implements AutoCloseable
                 .dirDeleteOnShutdown(true)
                 .dirDeleteOnStart(true),
             new Archive.Context()
-                .maxCatalogEntries(MAX_CATALOG_ENTRIES)
+                .catalogCapacity(CATALOG_CAPACITY)
                 .controlChannel(SRC_CONTROL_REQUEST_CHANNEL)
                 .archiveClientContext(new AeronArchive.Context().controlResponseChannel(SRC_CONTROL_RESPONSE_CHANNEL))
                 .recordingEventsEnabled(false)
@@ -129,7 +129,7 @@ public class IndexedReplicatedRecording implements AutoCloseable
                 .dirDeleteOnShutdown(true)
                 .dirDeleteOnStart(true),
             new Archive.Context()
-                .maxCatalogEntries(MAX_CATALOG_ENTRIES)
+                .catalogCapacity(CATALOG_CAPACITY)
                 .controlChannel(DST_CONTROL_REQUEST_CHANNEL)
                 .archiveClientContext(new AeronArchive.Context().controlResponseChannel(DST_CONTROL_RESPONSE_CHANNEL))
                 .recordingEventsEnabled(false)
@@ -176,7 +176,13 @@ public class IndexedReplicatedRecording implements AutoCloseable
         dstArchivingMediaDriver.archive().context().deleteDirectory();
     }
 
-    public static void main(final String[] args) throws Exception
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process.
+     * @throws InterruptedException if the thread is interrupted.
+     */
+    public static void main(final String[] args) throws InterruptedException
     {
         try (IndexedReplicatedRecording test = new IndexedReplicatedRecording())
         {

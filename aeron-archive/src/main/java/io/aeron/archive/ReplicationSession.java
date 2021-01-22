@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -401,7 +401,7 @@ class ReplicationSession implements Session, RecordingDescriptorConsumer
             .media(channelUri)
             .sessionId(replaySessionId)
             .alias(channelUri)
-            .rejoin(false);
+            .rejoin(Boolean.FALSE);
 
         if (isMds)
         {
@@ -593,8 +593,7 @@ class ReplicationSession implements Session, RecordingDescriptorConsumer
                 final long position = image.position();
                 if (shouldAddLiveDestination(position))
                 {
-                    final String liveChannel = ChannelUri.addSessionId(liveDestination, replaySessionId);
-                    recordingSubscription.asyncAddDestination(liveChannel);
+                    recordingSubscription.asyncAddDestination(liveDestination);
                     isLiveAdded = true;
                 }
                 else if (shouldStopReplay(position))

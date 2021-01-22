@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,15 @@ package io.aeron.archive;
 
 /**
  * Tool for inspecting and performing administrative tasks on an {@link Archive} and its contents which is described in
- * the {@link Catalog}.
+ * the {@link Catalog}. The tool delegates to {@link ArchiveTool}.
  */
 public class CatalogTool
 {
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process.
+     */
     public static void main(final String[] args)
     {
         ArchiveTool.main(args);

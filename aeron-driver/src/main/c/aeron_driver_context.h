@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,8 +32,6 @@
 #include "aeron_system_counters.h"
 #include "aeron_cnc_file_descriptor.h"
 
-#define AERON_LOSS_REPORT_FILE "loss-report.dat"
-
 #define AERON_COMMAND_QUEUE_CAPACITY (256)
 
 #define AERON_DRIVER_SENDER_NUM_RECV_BUFFERS (2)
@@ -62,6 +60,8 @@ typedef struct aeron_driver_context_bindings_clientd_entry_stct
     void *clientd;
 }
 aeron_driver_context_bindings_clientd_entry_t;
+
+typedef void (*aeron_driver_name_resolver_on_neighbor_change_func_t)(const struct sockaddr_storage *addr);
 
 typedef struct aeron_driver_context_stct
 {
@@ -125,7 +125,7 @@ typedef struct aeron_driver_context_stct
     struct
     {
         int32_t group_min_size;                             /* aeron.flow.control.receiver.group.min.size = 0 */
-        uint64_t receiver_timeout_ns;                       /* aeron.flow.control.receiver.timeout = 2s */
+        uint64_t receiver_timeout_ns;                       /* aeron.flow.control.receiver.timeout = 5s */
         int64_t group_tag;                                  /* aeron.flow.control.gtag = -1 */
     }
     flow_control;
@@ -196,7 +196,19 @@ typedef struct aeron_driver_context_stct
     aeron_driver_conductor_to_driver_interceptor_func_t to_driver_interceptor_func;
     aeron_driver_conductor_to_client_interceptor_func_t to_client_interceptor_func;
 
+    aeron_on_remove_publication_cleanup_func_t remove_publication_cleanup_func;
+    aeron_on_remove_subscription_cleanup_func_t remove_subscription_cleanup_func;
+    aeron_on_remove_image_cleanup_func_t remove_image_cleanup_func;
+
+    aeron_on_endpoint_change_func_t sender_proxy_on_add_endpoint_func;
+    aeron_on_endpoint_change_func_t sender_proxy_on_remove_endpoint_func;
+    aeron_on_endpoint_change_func_t receiver_proxy_on_add_endpoint_func;
+    aeron_on_endpoint_change_func_t receiver_proxy_on_remove_endpoint_func;
+
     aeron_untethered_subscription_state_change_func_t untethered_subscription_state_change_func;
+
+    aeron_driver_name_resolver_on_neighbor_change_func_t name_resolution_on_neighbor_added_func;
+    aeron_driver_name_resolver_on_neighbor_change_func_t name_resolution_on_neighbor_removed_func;
 
     aeron_driver_termination_validator_func_t termination_validator_func;
     void *termination_validator_state;

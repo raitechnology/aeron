@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ public class PublicationBuffersReadyFlyweight
      *
      * @param buffer to wrap.
      * @param offset at which the message begins.
-     * @return for fluent API
+     * @return this for a fluent API.
      */
     public final PublicationBuffersReadyFlyweight wrap(final MutableDirectBuffer buffer, final int offset)
     {
@@ -90,7 +90,7 @@ public class PublicationBuffersReadyFlyweight
     /**
      * Set the correlation id field.
      *
-     * @param correlationId field value
+     * @param correlationId field value.
      * @return this for a fluent API.
      */
     public PublicationBuffersReadyFlyweight correlationId(final long correlationId)
@@ -113,7 +113,7 @@ public class PublicationBuffersReadyFlyweight
     /**
      * Set the correlation id field.
      *
-     * @param registrationId field value
+     * @param registrationId field value.
      * @return this for a fluent API.
      */
     public PublicationBuffersReadyFlyweight registrationId(final long registrationId)

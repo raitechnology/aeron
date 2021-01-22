@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -101,7 +101,7 @@ public class ReceiveChannelEndpoint extends ReceiveChannelEndpointHotFields
         possibleTtlAsymmetry = context.systemCounters().get(POSSIBLE_TTL_ASYMMETRY);
 
         final ReceiveChannelEndpointThreadLocals threadLocals = context.receiveChannelEndpointThreadLocals();
-        smBuffer = threadLocals.smBuffer();
+        smBuffer = threadLocals.statusMessageBuffer();
         statusMessageFlyweight = threadLocals.statusMessageFlyweight();
         nakBuffer = threadLocals.nakBuffer();
         nakFlyweight = threadLocals.nakFlyweight();
@@ -109,7 +109,7 @@ public class ReceiveChannelEndpoint extends ReceiveChannelEndpointHotFields
         rttMeasurementFlyweight = threadLocals.rttMeasurementFlyweight();
         cachedNanoClock = context.cachedNanoClock();
         timeOfLastActivityNs = cachedNanoClock.nanoTime();
-        receiverId = threadLocals.receiverId();
+        receiverId = threadLocals.nextReceiverId();
 
         final String groupTagValue = udpChannel.channelUri().get(CommonContext.GROUP_TAG_PARAM_NAME);
         groupTag = null == groupTagValue ? context.receiverGroupTag() : Long.valueOf(groupTagValue);

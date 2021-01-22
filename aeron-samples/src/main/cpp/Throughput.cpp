@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -118,6 +118,9 @@ int main(int argc, char **argv)
 
     signal(SIGINT, sigIntHandler);
 
+    std::shared_ptr<std::thread> rateReporterThread;
+    std::shared_ptr<std::thread> pollThread;
+
     try
     {
         Settings settings = parseCmdLine(cp, argc, argv);
@@ -181,6 +184,14 @@ int main(int argc, char **argv)
             publication = aeron.findPublication(publicationId);
         }
 
+        if (settings.messageLength > publication->maxPayloadLength())
+        {
+            std::cerr << "ERROR - tryClaim limit: messageLength=" << settings.messageLength
+                      << " > maxPayloadLength=" << publication->maxPayloadLength()
+                      << ", use publication offer or increase MTU." << std::endl;
+            return -1;
+        }
+
         BusySpinIdleStrategy offerIdleStrategy;
         BusySpinIdleStrategy pollIdleStrategy;
 
@@ -188,21 +199,40 @@ int main(int argc, char **argv)
         FragmentAssembler fragmentAssembler(rateReporterHandler(rateReporter));
         fragment_handler_t handler = fragmentAssembler.handler();
 
-        std::shared_ptr<std::thread> rateReporterThread;
-
         Publication *publicationPtr = publication.get();
+
+        aeron::util::OnScopeExit tidy(
+            [&]()
+            {
+                running = false;
+                rateReporter.halt();
+
+                if (nullptr != pollThread && pollThread->joinable())
+                {
+                    pollThread->join();
+                    pollThread = nullptr;
+                }
+
+                if (nullptr != rateReporterThread && rateReporterThread->joinable())
+                {
+                    rateReporterThread->join();
+                    rateReporterThread = nullptr;
+                }
+            });
 
         if (settings.progress)
         {
             rateReporterThread = std::make_shared<std::thread>([&rateReporter](){ rateReporter.run(); });
         }
 
-        std::thread pollThread(
+        pollThread = std::make_shared<std::thread>(
             [&subscription, &pollIdleStrategy, &settings, &handler]()
             {
+                Subscription *subscriptionPtr = subscription.get();
+
                 while (isRunning())
                 {
-                    pollIdleStrategy.idle(subscription->poll(handler, settings.fragmentCountLimit));
+                    pollIdleStrategy.idle(subscriptionPtr->poll(handler, settings.fragmentCountLimit));
                 }
             });
 
@@ -248,16 +278,6 @@ int main(int argc, char **argv)
             printingActive = false;
         }
         while (isRunning() && continuationBarrier("Execute again?"));
-
-        running = false;
-        rateReporter.halt();
-
-        pollThread.join();
-
-        if (nullptr != rateReporterThread)
-        {
-            rateReporterThread->join();
-        }
     }
     catch (const CommandOptionException &e)
     {

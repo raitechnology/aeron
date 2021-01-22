@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,8 +28,12 @@ import static org.agrona.concurrent.status.CountersReader.*;
  * For allocating and finding cluster associated counters identified by
  * {@link ClusteredServiceContainer.Context#clusterId()}.
  */
-public class ClusterCounters
+public final class ClusterCounters
 {
+    private ClusterCounters()
+    {
+    }
+
     /**
      * Allocate a counter to represent the a component state within a cluster.
      *

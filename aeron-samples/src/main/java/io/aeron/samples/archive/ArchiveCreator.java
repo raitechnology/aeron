@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014-2020 Real Logic Limited.
+ *  Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,13 +44,18 @@ import static io.aeron.archive.Archive.Configuration.ARCHIVE_DIR_DEFAULT;
 public class ArchiveCreator
 {
     private static final String MESSAGE_PREFIX = "Message-Prefix-";
-    private static final int MAX_CATALOG_ENTRIES = 128;
+    private static final long CATALOG_CAPACITY = 128 * 1024;
     private static final int TERM_LENGTH = LogBufferDescriptor.TERM_MIN_LENGTH;
     private static final int SEGMENT_LENGTH = TERM_LENGTH * 2;
     private static final int STREAM_ID = 33;
 
     private static int recordingNumber = 0;
 
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process.
+     */
     public static void main(final String[] args)
     {
         final String archiveDirName = Archive.Configuration.archiveDirName();
@@ -66,7 +71,7 @@ public class ArchiveCreator
             .dirDeleteOnStart(true);
 
         final Archive.Context archiveContext = new Archive.Context()
-            .maxCatalogEntries(MAX_CATALOG_ENTRIES)
+            .catalogCapacity(CATALOG_CAPACITY)
             .segmentFileLength(SEGMENT_LENGTH)
             .deleteArchiveOnStart(true)
             .archiveDir(archiveDir)

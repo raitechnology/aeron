@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,29 @@
 #include <string>
 #include <cstddef>
 #include "CorrelatedMessageFlyweight.h"
+
+/**
+ * Control message for adding or removing a destination for a Publication in multi-destination-cast or a Subscription
+ * in multi-destination Subscription.
+ *
+ *   0                   1                   2                   3
+ *   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *  |                          Client ID                            |
+ *  |                                                               |
+ *  +---------------------------------------------------------------+
+ *  |                    Command Correlation ID                     |
+ *  |                                                               |
+ *  +---------------------------------------------------------------+
+ *  |                  Registration Correlation ID                  |
+ *  |                                                               |
+ *  +---------------------------------------------------------------+
+ *  |                       Channel Length                          |
+ *  +---------------------------------------------------------------+
+ *  |                       Channel (ASCII)                        ...
+ * ...                                                              |
+ *  +---------------------------------------------------------------+
+ */
 
 namespace aeron { namespace command
 {

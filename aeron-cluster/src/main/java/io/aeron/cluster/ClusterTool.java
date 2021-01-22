@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,6 +84,11 @@ public class ClusterTool
     private static final long TIMEOUT_MS =
         NANOSECONDS.toMillis(getDurationInNanos(AERON_CLUSTER_TOOL_TIMEOUT_PROP_NAME, 0));
 
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process.
+     */
     @SuppressWarnings("methodlength")
     public static void main(final String[] args)
     {
@@ -437,7 +442,7 @@ public class ClusterTool
                 final String activeMembers,
                 final String passiveMembers)
             {
-                if (correlationId == id.longValue())
+                if (correlationId == id.get())
                 {
                     clusterMembership.leaderMemberId = leaderMemberId;
                     clusterMembership.activeMembersStr = activeMembers;
@@ -454,21 +459,15 @@ public class ClusterTool
                 final List<ClusterMember> activeMembers,
                 final List<ClusterMember> passiveMembers)
             {
-                if (correlationId == id.longValue())
+                if (correlationId == id.get())
                 {
                     clusterMembership.currentTimeNs = currentTimeNs;
                     clusterMembership.leaderMemberId = leaderMemberId;
                     clusterMembership.memberId = memberId;
                     clusterMembership.activeMembers = activeMembers;
                     clusterMembership.passiveMembers = passiveMembers;
-
-                    ClusterMember[] activeMemberArray = new ClusterMember[activeMembers.size()];
-                    ClusterMember[] passiveMemberArray = new ClusterMember[passiveMembers.size()];
-                    activeMemberArray = activeMembers.toArray(activeMemberArray);
-                    passiveMemberArray = passiveMembers.toArray(passiveMemberArray);
-
-                    clusterMembership.activeMembersStr = ClusterMember.encodeAsString(activeMemberArray);
-                    clusterMembership.passiveMembersStr = ClusterMember.encodeAsString(passiveMemberArray);
+                    clusterMembership.activeMembersStr = ClusterMember.encodeAsString(activeMembers);
+                    clusterMembership.passiveMembersStr = ClusterMember.encodeAsString(passiveMembers);
                     id.set(NULL_VALUE);
                 }
             }
@@ -481,7 +480,7 @@ public class ClusterTool
                 controlProperties.controlChannel, controlProperties.serviceStreamId), listener))
         {
             id.set(aeron.nextCorrelationId());
-            if (consensusModuleProxy.clusterMembersQuery(id.longValue()))
+            if (consensusModuleProxy.clusterMembersQuery(id.get()))
             {
                 final long startTime = System.currentTimeMillis();
                 do
@@ -495,11 +494,11 @@ public class ClusterTool
                         Thread.yield();
                     }
                 }
-                while (NULL_VALUE != id.longValue());
+                while (NULL_VALUE != id.get());
             }
         }
 
-        return id.longValue() == NULL_VALUE;
+        return id.get() == NULL_VALUE;
     }
 
     public static boolean removeMember(final File clusterDir, final int memberId, final boolean isPassive)
@@ -785,17 +784,6 @@ public class ClusterTool
         {
             IoUtil.unmap(countersReader.valuesBuffer().byteBuffer());
         }
-    }
-
-    static class ClusterMembership
-    {
-        int memberId = NULL_VALUE;
-        int leaderMemberId = NULL_VALUE;
-        long currentTimeNs = NULL_VALUE;
-        String activeMembersStr = null;
-        String passiveMembersStr = null;
-        List<ClusterMember> activeMembers = null;
-        List<ClusterMember> passiveMembers = null;
     }
 
     private static ClusterMarkFile openMarkFile(final File clusterDir, final Consumer<String> logger)

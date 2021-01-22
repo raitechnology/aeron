@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ class ArchiveEventLoggerTest
         value = ArchiveEventCode.class,
         mode = EXCLUDE,
         names = { "CMD_OUT_RESPONSE", "REPLICATION_SESSION_STATE_CHANGE",
-        "CONTROL_SESSION_STATE_CHANGE", "REPLAY_SESSION_ERROR", "CATALOG_RESIZE" })
+            "CONTROL_SESSION_STATE_CHANGE", "REPLAY_SESSION_ERROR", "CATALOG_RESIZE" })
     void logControlRequest(final ArchiveEventCode eventCode)
     {
         ARCHIVE_EVENT_CODES.add(eventCode);
@@ -77,8 +77,8 @@ class ArchiveEventLoggerTest
         new MessageHeaderEncoder().wrap(srcBuffer, srcOffset).templateId(eventCode.templateId());
         srcBuffer.setMemory(srcOffset + ENCODED_LENGTH, length, (byte)3);
         final int captureLength = MAX_CAPTURE_LENGTH;
-        logBuffer.putLong(CAPACITY + HEAD_CACHE_POSITION_OFFSET, CAPACITY * 3);
-        logBuffer.putLong(CAPACITY + TAIL_POSITION_OFFSET, 128 + CAPACITY * 3);
+        logBuffer.putLong(CAPACITY + HEAD_CACHE_POSITION_OFFSET, CAPACITY * 3L);
+        logBuffer.putLong(CAPACITY + TAIL_POSITION_OFFSET, 128 + CAPACITY * 3L);
         final int recordOffset = 128;
 
         logger.logControlRequest(srcBuffer, srcOffset, length);
@@ -128,7 +128,7 @@ class ArchiveEventLoggerTest
         value = ArchiveEventCode.class,
         mode = EXCLUDE,
         names = { "CMD_OUT_RESPONSE", "REPLICATION_SESSION_STATE_CHANGE",
-        "CONTROL_SESSION_STATE_CHANGE", "REPLAY_SESSION_ERROR", "CATALOG_RESIZE" })
+            "CONTROL_SESSION_STATE_CHANGE", "REPLAY_SESSION_ERROR", "CATALOG_RESIZE" })
     void controlRequestEvents(final ArchiveEventCode eventCode)
     {
         assertTrue(CONTROL_REQUEST_EVENTS.contains(eventCode));
@@ -139,7 +139,7 @@ class ArchiveEventLoggerTest
         value = ArchiveEventCode.class,
         mode = INCLUDE,
         names = { "CMD_OUT_RESPONSE", "REPLICATION_SESSION_STATE_CHANGE",
-        "CONTROL_SESSION_STATE_CHANGE", "REPLAY_SESSION_ERROR", "CATALOG_RESIZE" })
+            "CONTROL_SESSION_STATE_CHANGE", "REPLAY_SESSION_ERROR", "CATALOG_RESIZE" })
     void nonControlRequestEvents(final ArchiveEventCode eventCode)
     {
         assertFalse(CONTROL_REQUEST_EVENTS.contains(eventCode));
@@ -189,21 +189,16 @@ class ArchiveEventLoggerTest
     {
         final int offset = ALIGNMENT * 3;
         logBuffer.putLong(CAPACITY + TAIL_POSITION_OFFSET, offset);
-        final int captureLength = SIZE_OF_LONG * 2 + SIZE_OF_INT * 2;
-        final int maxEntries = 21;
+        final int captureLength = SIZE_OF_LONG * 2;
         final long catalogLength = 42;
-        final int newMaxEntries = 121;
         final long newCatalogLength = 142;
 
-        logger.logCatalogResize(maxEntries, catalogLength, newMaxEntries, newCatalogLength);
+        logger.logCatalogResize(catalogLength, newCatalogLength);
 
         verifyLogHeader(logBuffer, offset, toEventCodeId(CATALOG_RESIZE), captureLength, captureLength);
-        assertEquals(maxEntries, logBuffer.getInt(encodedMsgOffset(offset + LOG_HEADER_LENGTH), LITTLE_ENDIAN));
         assertEquals(catalogLength,
-            logBuffer.getLong(encodedMsgOffset(offset + LOG_HEADER_LENGTH + SIZE_OF_INT), LITTLE_ENDIAN));
-        assertEquals(newMaxEntries, logBuffer.getInt(
-            encodedMsgOffset(offset + LOG_HEADER_LENGTH + SIZE_OF_INT + SIZE_OF_LONG), LITTLE_ENDIAN));
-        assertEquals(newCatalogLength, logBuffer.getLong(
-            encodedMsgOffset(offset + LOG_HEADER_LENGTH + SIZE_OF_INT * 2 + SIZE_OF_LONG), LITTLE_ENDIAN));
+            logBuffer.getLong(encodedMsgOffset(offset + LOG_HEADER_LENGTH), LITTLE_ENDIAN));
+        assertEquals(newCatalogLength,
+            logBuffer.getLong(encodedMsgOffset(offset + LOG_HEADER_LENGTH + SIZE_OF_LONG), LITTLE_ENDIAN));
     }
 }

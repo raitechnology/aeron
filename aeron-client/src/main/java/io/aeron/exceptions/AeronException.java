@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,86 +43,91 @@ public class AeronException extends RuntimeException
         WARN
     }
 
+    /**
+     * {@link AeronException.Category} of the exception to help the client decide how they should proceed.
+     */
     private final Category category;
 
     /**
-     * Default Aeron exception of {@link Category#ERROR}.
+     * Default Aeron exception of {@link AeronException.Category#ERROR}.
      */
     public AeronException()
     {
+        super(Category.ERROR.name());
         this.category = Category.ERROR;
     }
 
     /**
-     * Default Aeron exception with provided {@link Category}.
+     * Default Aeron exception with provided {@link AeronException.Category}.
      *
      * @param category of this exception.
      */
     public AeronException(final Category category)
     {
+        super(category.name());
         this.category = category;
     }
 
     /**
-     * Aeron exception with provided message and {@link Category#ERROR}.
+     * Aeron exception with provided message and {@link AeronException.Category#ERROR}.
      *
      * @param message to detail the exception.
      */
     public AeronException(final String message)
     {
-        super(message);
+        super(Category.ERROR.name() + " - " + message);
         this.category = Category.ERROR;
     }
 
     /**
-     * Aeron exception with provided cause and {@link Category#ERROR}.
+     * Aeron exception with provided cause and {@link AeronException.Category#ERROR}.
      *
      * @param cause of the error.
      */
     public AeronException(final Throwable cause)
     {
-        super(cause);
+        super(Category.ERROR.name(), cause);
         this.category = Category.ERROR;
     }
 
     /**
-     * Aeron exception with a detailed message and provided {@link Category}.
+     * Aeron exception with a detailed message and provided {@link AeronException.Category}.
      *
      * @param message  providing detail on the error.
      * @param category of the exception.
      */
     public AeronException(final String message, final Category category)
     {
-        super(message);
+        super(category.name() + " - " + message);
         this.category = category;
     }
 
     /**
-     * Aeron exception with a detailed message and cause.
+     * Aeron exception with a detailed message, cause, and {@link AeronException.Category#ERROR}.
      *
      * @param message providing detail on the error.
      * @param cause   of the error.
      */
     public AeronException(final String message, final Throwable cause)
     {
-        super(message, cause);
+        super(Category.ERROR.name() + " - " + message, cause);
         this.category = Category.ERROR;
     }
 
     /**
-     * Aeron exception with cause and provided {@link Category}.
+     * Aeron exception with cause and provided {@link AeronException.Category}.
      *
      * @param cause    of the error.
      * @param category of the exception.
      */
     public AeronException(final Throwable cause, final Category category)
     {
-        super(cause);
+        super(category.name(), cause);
         this.category = category;
     }
 
     /**
-     * Aeron exception with a detailed message, cause, and {@link Category}.
+     * Aeron exception with a detailed message, cause, and {@link AeronException.Category}.
      *
      * @param message  providing detail on the error.
      * @param cause    of the error.
@@ -130,13 +135,13 @@ public class AeronException extends RuntimeException
      */
     public AeronException(final String message, final Throwable cause, final Category category)
     {
-        super(message, cause);
+        super(category.name() + " - " + message, cause);
         this.category = category;
     }
 
     /**
      * Constructs a new Aeron exception with the a detail message, cause, suppression enabled or disabled,
-     * and writable stack trace enabled or disabled, in the category {@link Category#ERROR}.
+     * and writable stack trace enabled or disabled, in the category {@link AeronException.Category#ERROR}.
      *
      * @param message            providing detail on the error.
      * @param cause              of the error.
@@ -146,13 +151,13 @@ public class AeronException extends RuntimeException
     public AeronException(
         final String message, final Throwable cause, final boolean enableSuppression, final boolean writableStackTrace)
     {
-        super(message, cause, enableSuppression, writableStackTrace);
+        super(Category.ERROR.name() + " - " + message, cause, enableSuppression, writableStackTrace);
         this.category = Category.ERROR;
     }
 
     /**
      * Constructs a new Aeron exception with the a detail message, cause, suppression enabled or disabled,
-     * writable stack trace enabled or disabled, an {@link Category}.
+     * writable stack trace enabled or disabled, an {@link AeronException.Category}.
      *
      * @param message            providing detail on the error.
      * @param cause              of the error.
@@ -167,27 +172,17 @@ public class AeronException extends RuntimeException
         final boolean writableStackTrace,
         final Category category)
     {
-        super(message, cause, enableSuppression, writableStackTrace);
+        super(category.name() + " - " + message, cause, enableSuppression, writableStackTrace);
         this.category = category;
     }
 
     /**
-     * {@link Category} of exception for determining what follow up action can be taken.
+     * {@link AeronException.Category} of exception for determining what follow up action can be taken.
      *
-     * @return {@link Category} of exception for determining what follow up action can be taken.
+     * @return {@link AeronException.Category} of exception for determining what follow up action can be taken.
      */
     public Category category()
     {
         return category;
-    }
-
-    /**
-     * Add the {@link #category()} name to the beginning of the {@link Throwable#getMessage()}.
-     *
-     * {@inheritDoc}
-     */
-    public String getMessage()
-    {
-        return category.name() + " - " + super.getMessage();
     }
 }

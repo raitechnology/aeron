@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,29 +17,45 @@ package io.aeron.cluster.service;
 
 import io.aeron.ExclusivePublication;
 import io.aeron.Publication;
+import io.aeron.cluster.client.ClusterException;
 import io.aeron.cluster.codecs.MessageHeaderEncoder;
 import io.aeron.cluster.codecs.SnapshotMark;
 import io.aeron.cluster.codecs.SnapshotMarkerEncoder;
-import io.aeron.exceptions.AeronException;
 import io.aeron.logbuffer.BufferClaim;
+import org.agrona.LangUtil;
 import org.agrona.concurrent.AgentInvoker;
-import org.agrona.concurrent.AgentTerminationException;
 import org.agrona.concurrent.IdleStrategy;
 
 import java.util.concurrent.TimeUnit;
 
 /**
- * Based class of common functions required to take a snapshot of cluster state.
+ * Base class of common functions required to take a snapshot of cluster state.
  */
 public class SnapshotTaker
 {
-    protected static final int ENCODED_MARKER_LENGTH =
-        MessageHeaderEncoder.ENCODED_LENGTH + SnapshotMarkerEncoder.BLOCK_LENGTH;
+    /**
+     * Reusable {@link BufferClaim} to avoid allocation.
+     */
     protected final BufferClaim bufferClaim = new BufferClaim();
+
+    /**
+     * Reusable {@link MessageHeaderEncoder} to avoid allocation.
+     */
     protected final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
+
+    /**
+     * {@link Publication} to which the snapshot will be written.
+     */
     protected final ExclusivePublication publication;
+
+    /**
+     * {@link IdleStrategy} to be called when back pressure is propagated from the {@link #publication}.
+     */
     protected final IdleStrategy idleStrategy;
-    protected final AgentInvoker aeronAgentInvoker;
+
+    private static final int ENCODED_MARKER_LENGTH =
+        MessageHeaderEncoder.ENCODED_LENGTH + SnapshotMarkerEncoder.BLOCK_LENGTH;
+    private final AgentInvoker aeronAgentInvoker;
     private final SnapshotMarkerEncoder snapshotMarkerEncoder = new SnapshotMarkerEncoder();
 
     /**
@@ -145,24 +161,38 @@ public class SnapshotTaker
         }
     }
 
+    /**
+     * Check for thread interrupt and throw an {@link InterruptedException} if interrupted.
+     */
     protected static void checkInterruptStatus()
     {
         if (Thread.interrupted())
         {
-            throw new AgentTerminationException("unexpected interrupt during operation");
+            LangUtil.rethrowUnchecked(new InterruptedException());
         }
     }
 
+    /**
+     * Check the result of offering to a publication when writing a snapshot.
+     *
+     * @param result of an offer or try claim to a publication.
+     */
     protected static void checkResult(final long result)
     {
         if (result == Publication.NOT_CONNECTED ||
             result == Publication.CLOSED ||
             result == Publication.MAX_POSITION_EXCEEDED)
         {
-            throw new AeronException("unexpected publication state: " + result);
+            throw new ClusterException("unexpected publication state: " + result);
         }
     }
 
+    /**
+     * Check the result of offering to a publication when writing a snapshot and then idle after invoking the client
+     * agent if necessary.
+     *
+     * @param result of an offer or try claim to a publication.
+     */
     protected void checkResultAndIdle(final long result)
     {
         checkResult(result);
@@ -171,6 +201,9 @@ public class SnapshotTaker
         idleStrategy.idle();
     }
 
+    /**
+     * Invoke the Aeron client agent if necessary.
+     */
     protected void invokeAgentClient()
     {
         if (null != aeronAgentInvoker)

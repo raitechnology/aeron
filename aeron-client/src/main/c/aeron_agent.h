@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@
 #define AERON_AGENT_H
 
 #include "concurrent/aeron_thread.h"
-#include "aeron_common.h"
 #include "concurrent/aeron_atomic.h"
+#include "aeron_common.h"
 #include "aeronc.h"
 
 typedef int (*aeron_agent_do_work_func_t)(void *);

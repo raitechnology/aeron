@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -136,9 +136,16 @@ int main(int argc, char **argv)
 
     printf("Shutting down driver...\n");
 
-    cleanup:
-        aeron_driver_close(driver);
-        aeron_driver_context_close(context);
+cleanup:
+    if (0 != aeron_driver_close(driver))
+    {
+        fprintf(stderr, "ERROR: driver close (%d) %s\n", aeron_errcode(), aeron_errmsg());
+    }
+
+    if (0 != aeron_driver_context_close(context))
+    {
+        fprintf(stderr, "ERROR: driver context close (%d) %s\n", aeron_errcode(), aeron_errmsg());
+    }
 
     return status;
 }

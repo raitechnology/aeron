@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,6 +52,14 @@ public class UdpNameResolutionTransport extends UdpChannelTransport
     private final UnsafeBuffer unsafeBuffer;
     private final ByteBuffer byteBuffer;
 
+    /**
+     * Construct a new channel transport for name resolution.
+     *
+     * @param udpChannel      associated with the transport.
+     * @param resolverAddress to listen on.
+     * @param unsafeBuffer    for reading frames.
+     * @param context         for configuration.
+     */
     public UdpNameResolutionTransport(
         final UdpChannel udpChannel,
         final InetSocketAddress resolverAddress,

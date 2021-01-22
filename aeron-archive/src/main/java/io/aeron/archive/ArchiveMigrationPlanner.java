@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import java.util.List;
  * A step need not be a complete operation. A series of operations may be broken down in steps and
  * included with the same minimum version.
  */
-class ArchiveMigrationPlanner
+final class ArchiveMigrationPlanner
 {
     private static final ArrayList<ArchiveMigrationStep> ALL_MIGRATION_STEPS = new ArrayList<>();
 
@@ -36,7 +36,12 @@ class ArchiveMigrationPlanner
     {
         ALL_MIGRATION_STEPS.add(new ArchiveMigration_0_1());
         ALL_MIGRATION_STEPS.add(new ArchiveMigration_1_2());
+        ALL_MIGRATION_STEPS.add(new ArchiveMigration_2_3());
         // as migrations are added, they are added to the static list in order of operation
+    }
+
+    private ArchiveMigrationPlanner()
+    {
     }
 
     public static List<ArchiveMigrationStep> createPlan(final int version)

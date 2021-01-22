@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,11 +22,8 @@ extern "C"
 {
 #include "collections/aeron_array_to_ptr_hash_map.h"
 #include "aeron_alloc.h"
+#include "util/aeron_strutil.h"
 }
-
-#ifdef _MSC_VER
-#define strdup _strdup
-#endif
 
 class ArrToPtrHashMapTest : public testing::Test
 {

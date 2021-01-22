@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,19 @@ import io.aeron.*;
  */
 public class RegistrationException extends AeronException
 {
+    /**
+     * The correlation id of the command to register the resource action.
+     */
     private final long correlationId;
+
+    /**
+     * Value of the {@link #errorCode()} encoded as an int.
+     */
     private final int errorCodeValue;
+
+    /**
+     * The {@link ErrorCode} for the specific exception.
+     */
     private final ErrorCode errorCode;
 
     /**
@@ -39,7 +50,9 @@ public class RegistrationException extends AeronException
     public RegistrationException(
         final long correlationId, final int errorCodeValue, final ErrorCode errorCode, final String msg)
     {
-        super(msg, ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE == errorCode ? Category.WARN : Category.ERROR);
+        super(
+            msg + ", errorCodeValue=" + errorCodeValue,
+            ErrorCode.RESOURCE_TEMPORARILY_UNAVAILABLE == errorCode ? Category.WARN : Category.ERROR);
         this.correlationId = correlationId;
         this.errorCode = errorCode;
         this.errorCodeValue = errorCodeValue;
@@ -66,7 +79,7 @@ public class RegistrationException extends AeronException
     }
 
     /**
-     * Value of the errorCode encoded. This can provide additional information when a
+     * Value of the {@link #errorCode()} encoded as an int. This can provide additional information when a
      * {@link ErrorCode#UNKNOWN_CODE_VALUE} is returned.
      *
      * @return value of the errorCode encoded as an int.
@@ -74,13 +87,5 @@ public class RegistrationException extends AeronException
     public int errorCodeValue()
     {
         return errorCodeValue;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public String getMessage()
-    {
-        return "correlationId=" + correlationId + ", errorCodeValue=" + errorCodeValue + ", " + super.getMessage();
     }
 }

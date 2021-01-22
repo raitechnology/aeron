@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@ class ArchiveProxy
 {
 public:
     explicit ArchiveProxy(std::shared_ptr<ExclusivePublication> publication, int retryAttempts = 3) :
-        m_array(),
         m_buffer(m_array.data(), m_array.size()),
         m_publication(std::move(publication)),
         m_retryAttempts(retryAttempts)
@@ -575,6 +574,26 @@ public:
     }
 
     /**
+     * Purge a stopped recording, i.e. mark recording as 'RecordingState#INVALID' and delete the corresponding segment
+     * files. The space in the Catalog will be reclaimed upon compaction.
+     *
+     * @param recordingId      of the stopped recording to be purged.
+     * @param correlationId    for this request.
+     * @param controlSessionId for this request.
+     * @return true if successfully offered otherwise false.
+     */
+    template<typename IdleStrategy = aeron::concurrent::BackoffIdleStrategy>
+    bool purgeRecording(
+        std::int64_t recordingId,
+        std::int64_t correlationId,
+        std::int64_t controlSessionId)
+    {
+        const util::index_t length = purgeRecording(m_buffer, recordingId, correlationId, controlSessionId);
+
+        return offer<IdleStrategy>(m_buffer, 0, length);
+    }
+
+    /**
      * List registered subscriptions in the archive which have been used to record streams.
      *
      * @param pseudoIndex       in the list of active recording subscriptions.
@@ -846,7 +865,7 @@ public:
     }
 
 private:
-    std::array<std::uint8_t, PROXY_REQUEST_BUFFER_LENGTH> m_array;
+    std::array<std::uint8_t, PROXY_REQUEST_BUFFER_LENGTH> m_array = {};
     AtomicBuffer m_buffer;
     std::shared_ptr<ExclusivePublication> m_publication;
     const int m_retryAttempts;
@@ -1039,6 +1058,12 @@ private:
         AtomicBuffer &buffer,
         std::int64_t recordingId,
         std::int64_t position,
+        std::int64_t correlationId,
+        std::int64_t controlSessionId);
+
+    static util::index_t purgeRecording(
+        AtomicBuffer &buffer,
+        std::int64_t recordingId,
         std::int64_t correlationId,
         std::int64_t controlSessionId);
 

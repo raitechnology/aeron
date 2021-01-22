@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,7 +43,13 @@ public class BasicPublisher
     private static final long LINGER_TIMEOUT_MS = SampleConfiguration.LINGER_TIMEOUT_MS;
     private static final boolean EMBEDDED_MEDIA_DRIVER = SampleConfiguration.EMBEDDED_MEDIA_DRIVER;
 
-    public static void main(final String[] args) throws Exception
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process.
+     * @throws InterruptedException if the thread sleep delay is interrupted.
+     */
+    public static void main(final String[] args) throws InterruptedException
     {
         System.out.println("Publishing to " + CHANNEL + " on stream id " + STREAM_ID);
 

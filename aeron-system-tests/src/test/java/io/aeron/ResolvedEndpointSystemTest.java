@@ -18,9 +18,9 @@ package io.aeron;
 import io.aeron.driver.MediaDriver;
 import io.aeron.driver.ThreadingMode;
 import io.aeron.logbuffer.FragmentHandler;
-import io.aeron.test.MediaDriverTestWatcher;
-import io.aeron.test.TestMediaDriver;
 import io.aeron.test.Tests;
+import io.aeron.test.driver.MediaDriverTestWatcher;
+import io.aeron.test.driver.TestMediaDriver;
 import org.agrona.CloseHelper;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.jupiter.api.AfterEach;
@@ -259,7 +259,7 @@ public class ResolvedEndpointSystemTest
             final String mdcSubUri = new ChannelUriStringBuilder()
                 .media("udp")
                 .controlEndpoint(bindAddressAndPort1.get(0))
-                .group(true)
+                .group(Boolean.TRUE)
                 .build();
 
             try (Subscription sub = client.addSubscription(mdcSubUri, STREAM_ID))

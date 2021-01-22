@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,10 +26,6 @@
 #include "util/aeron_strutil.h"
 #include "util/aeron_arrayutil.h"
 #include "aeron_name_resolver.h"
-
-#ifdef _MSC_VER
-#define strdup _strdup
-#endif
 
 #define AERON_NAME_RESOLVER_CSV_TABLE_MAX_SIZE (1024)
 #define AERON_NAME_RESOLVER_CSV_TABLE_COLUMNS (4)

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ import static org.agrona.concurrent.status.CountersReader.*;
  *  +---------------------------------------------------------------+
  * </pre>
  */
-public class RecoveryState
+public final class RecoveryState
 {
     /**
      * Type id of a recovery state counter.
@@ -74,6 +74,10 @@ public class RecoveryState
     public static final int CLUSTER_ID_OFFSET = TIMESTAMP_OFFSET + SIZE_OF_LONG;
     public static final int SERVICE_COUNT_OFFSET = CLUSTER_ID_OFFSET + SIZE_OF_INT;
     public static final int SNAPSHOT_RECORDING_IDS_OFFSET = SERVICE_COUNT_OFFSET + SIZE_OF_INT;
+
+    private RecoveryState()
+    {
+    }
 
     /**
      * Allocate a counter to represent the snapshot services should load on start.

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014-2020 Real Logic Limited.
+ *  Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,7 +79,12 @@ public class EmbeddedReplayThroughput extends EmbeddedReplayThroughputValue impl
     private final UnsafeBuffer buffer = new UnsafeBuffer(allocateDirectAligned(MESSAGE_LENGTH, CACHE_LINE_LENGTH));
     private int publicationSessionId;
 
-    public static void main(final String[] args) throws Exception
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process.
+     */
+    public static void main(final String[] args)
     {
         loadPropertiesFiles(args);
 
@@ -87,7 +92,6 @@ public class EmbeddedReplayThroughput extends EmbeddedReplayThroughputValue impl
         {
             System.out.println("Making a recording for playback...");
             final long recordingLength = test.makeRecording();
-            Thread.sleep(10);
 
             System.out.println("Finding the recording...");
             final long recordingId = test.findRecordingId(ChannelUri.addSessionId(CHANNEL, test.publicationSessionId));

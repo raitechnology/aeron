@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@
 #include "aeron_socket.h"
 #include "aeron_common.h"
 
+// This includes '[' and ']' around the address and the ':<port>'.
+// The system header already includes the null terminator
 #define AERON_NETUTIL_FORMATTED_MAX_LENGTH (INET6_ADDRSTRLEN + 8)
 
 struct ifaddrs;

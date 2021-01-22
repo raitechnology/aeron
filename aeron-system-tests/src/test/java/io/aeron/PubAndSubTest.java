@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,8 @@ import io.aeron.driver.ext.LossGenerator;
 import io.aeron.logbuffer.FragmentHandler;
 import io.aeron.logbuffer.Header;
 import io.aeron.logbuffer.RawBlockHandler;
-import io.aeron.test.MediaDriverTestWatcher;
-import io.aeron.test.TestMediaDriver;
+import io.aeron.test.driver.MediaDriverTestWatcher;
+import io.aeron.test.driver.TestMediaDriver;
 import io.aeron.test.Tests;
 import org.agrona.BitUtil;
 import org.agrona.CloseHelper;
@@ -46,7 +46,7 @@ import java.util.concurrent.TimeUnit;
 
 import static io.aeron.logbuffer.FrameDescriptor.FRAME_ALIGNMENT;
 import static io.aeron.protocol.DataHeaderFlyweight.HEADER_LENGTH;
-import static io.aeron.test.LossReportTestUtil.verifyLossOccurredForStream;
+import static io.aeron.test.driver.LossReportTestUtil.verifyLossOccurredForStream;
 import static java.util.Arrays.asList;
 import static org.agrona.BitUtil.SIZE_OF_INT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -582,8 +582,6 @@ public class PubAndSubTest
 
         Tests.awaitConnected(subscription);
 
-        assertEquals(publication.position(), subscription.imageAtIndex(0).position());
-
         for (int i = 0; i < numMessagesToSendStageTwo; i++)
         {
             while (publication.offer(buffer, 0, messageLength) < 0L)
@@ -595,12 +593,6 @@ public class PubAndSubTest
         }
 
         assertEquals(publication.position(), subscription.imageAtIndex(0).position());
-
-        verify(fragmentHandler, times(numMessagesToSendStageOne + numMessagesToSendStageTwo)).onFragment(
-            any(DirectBuffer.class),
-            anyInt(),
-            eq(messageLength),
-            any(Header.class));
     }
 
     @ParameterizedTest

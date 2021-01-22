@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,7 @@
  */
 package io.aeron.cluster;
 
-import io.aeron.CommonContext;
-import io.aeron.Counter;
+import io.aeron.*;
 import io.aeron.archive.Archive;
 import io.aeron.archive.ArchiveMarkFile;
 import io.aeron.archive.ArchiveThreadingMode;
@@ -31,6 +30,8 @@ import io.aeron.driver.ThreadingMode;
 import io.aeron.logbuffer.Header;
 import io.aeron.test.SlowTest;
 import io.aeron.test.Tests;
+import io.aeron.test.cluster.ClusterTests;
+import io.aeron.test.cluster.StubClusteredService;
 import org.agrona.CloseHelper;
 import org.agrona.DirectBuffer;
 import org.agrona.ExpandableArrayBuffer;
@@ -49,28 +50,30 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import static io.aeron.Aeron.NULL_VALUE;
 import static io.aeron.cluster.RecordingLog.RECORDING_LOG_FILE_NAME;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @SlowTest
 public class StartFromTruncatedRecordingLogTest
 {
-    private static final long MAX_CATALOG_ENTRIES = 1024;
+    private static final long CATALOG_CAPACITY = 1024 * 1024;
     private static final int MEMBER_COUNT = 3;
     private static final int MESSAGE_COUNT = 10;
 
     private static final String CLUSTER_MEMBERS = clusterMembersString();
-    private static final String LOG_CHANNEL =
-        "aeron:udp?term-length=256k|control-mode=manual|control=localhost:25550";
-    private static final String ARCHIVE_CONTROL_REQUEST_CHANNEL =
-        "aeron:udp?term-length=64k|endpoint=localhost:8010";
-    private static final String ARCHIVE_CONTROL_RESPONSE_CHANNEL =
-        "aeron:udp?term-length=64k|endpoint=localhost:8020";
+    private static final String LOG_CHANNEL = "aeron:udp?term-length=256k";
+    private static final String ARCHIVE_CONTROL_REQUEST_CHANNEL = "aeron:ipc?term-length=64k";
+    private static final String ARCHIVE_CONTROL_RESPONSE_CHANNEL = "aeron:ipc?term-length=64k";
 
+    private final AtomicLong[] snapshotCounters = new AtomicLong[MEMBER_COUNT];
+    private final Counter[] mockSnapshotCounters = new Counter[MEMBER_COUNT];
     private final EchoService[] echoServices = new EchoService[MEMBER_COUNT];
     private final ClusteredMediaDriver[] clusteredMediaDrivers = new ClusteredMediaDriver[MEMBER_COUNT];
     private final ClusteredServiceContainer[] containers = new ClusteredServiceContainer[MEMBER_COUNT];
@@ -80,12 +83,19 @@ public class StartFromTruncatedRecordingLogTest
     private final MutableInteger responseCount = new MutableInteger();
     private final EgressListener egressMessageListener =
         (clusterSessionId, timestamp, buffer, offset, length, header) -> responseCount.value++;
+    private final AtomicLong terminateCount = new AtomicLong();
 
     @BeforeEach
     public void before()
     {
         for (int i = 0; i < MEMBER_COUNT; i++)
         {
+            final AtomicLong atomicLong = new AtomicLong();
+            final Counter mockCounter = mock(Counter.class);
+            snapshotCounters[i] = atomicLong;
+            mockSnapshotCounters[i] = mockCounter;
+            when(mockCounter.incrementOrdered()).thenAnswer((invocation) -> atomicLong.getAndIncrement());
+
             echoServices[i] = new EchoService();
             startNode(i, true);
         }
@@ -136,7 +146,7 @@ public class StartFromTruncatedRecordingLogTest
 
     @Test
     @Timeout(30)
-    public void shouldBeAbleToStartClusterFromTruncatedRecordingLog() throws IOException
+    public void shouldBeAbleToStartClusterFromTruncatedRecordingLog() throws Exception
     {
         stopAndStartClusterWithTruncationOfRecordingLog();
         assertClusterIsFunctioningCorrectly();
@@ -150,28 +160,21 @@ public class StartFromTruncatedRecordingLogTest
         ClusterTests.failOnClusterError();
     }
 
-    private void stopAndStartClusterWithTruncationOfRecordingLog() throws IOException
+    private void stopAndStartClusterWithTruncationOfRecordingLog() throws Exception
     {
         final int leaderMemberId = awaitLeaderMemberId();
         final int followerMemberIdA = (leaderMemberId + 1) >= MEMBER_COUNT ? 0 : (leaderMemberId + 1);
         final int followerMemberIdB = (followerMemberIdA + 1) >= MEMBER_COUNT ? 0 : (followerMemberIdA + 1);
 
-        final Counter electionStateFollowerA = clusteredMediaDrivers[followerMemberIdA]
-            .consensusModule().context().electionStateCounter();
-
-        final Counter electionStateFollowerB = clusteredMediaDrivers[followerMemberIdB]
-            .consensusModule().context().electionStateCounter();
-
-        ClusterTests.awaitElectionState(electionStateFollowerA, ElectionState.CLOSED);
-        ClusterTests.awaitElectionState(electionStateFollowerB, ElectionState.CLOSED);
-
         takeSnapshot(leaderMemberId);
         awaitSnapshotCount(1);
 
-        awaitNeutralCounter(leaderMemberId);
+        awaitNeutralControlToggle(leaderMemberId);
+        awaitConsensusModulesActive();
 
         shutdown(leaderMemberId);
         awaitSnapshotCount(2);
+        Tests.awaitValue(terminateCount, MEMBER_COUNT);
 
         stopNode(leaderMemberId);
         stopNode(followerMemberIdA);
@@ -181,6 +184,7 @@ public class StartFromTruncatedRecordingLogTest
         truncateRecordingLogAndDeleteMarkFiles(followerMemberIdA);
         truncateRecordingLogAndDeleteMarkFiles(followerMemberIdB);
 
+        terminateCount.set(0);
         startNode(leaderMemberId, false);
         startNode(followerMemberIdA, false);
         startNode(followerMemberIdB, false);
@@ -191,7 +195,7 @@ public class StartFromTruncatedRecordingLogTest
         int leaderMemberId;
         while (NULL_VALUE == (leaderMemberId = findLeaderId()))
         {
-            Tests.sleep(100);
+            Tests.sleep(10);
         }
 
         return leaderMemberId;
@@ -307,6 +311,8 @@ public class StartFromTruncatedRecordingLogTest
         final RecordingLog existingRecordingLog, final RecordingLog newRecordingLog, final int serviceId)
     {
         final RecordingLog.Entry snapshot = existingRecordingLog.getLatestSnapshot(serviceId);
+        assertNotNull(snapshot);
+
         newRecordingLog.appendSnapshot(
             snapshot.recordingId,
             snapshot.leadershipTermId,
@@ -323,9 +329,9 @@ public class StartFromTruncatedRecordingLogTest
 
         final AeronArchive.Context archiveCtx = new AeronArchive.Context()
             .lock(NoOpLock.INSTANCE)
-            .controlRequestChannel(memberSpecificPort(ARCHIVE_CONTROL_REQUEST_CHANNEL, index))
+            .controlRequestChannel(ARCHIVE_CONTROL_REQUEST_CHANNEL)
             .controlRequestStreamId(100 + index)
-            .controlResponseChannel(memberSpecificPort(ARCHIVE_CONTROL_RESPONSE_CHANNEL, index))
+            .controlResponseChannel(ARCHIVE_CONTROL_RESPONSE_CHANNEL)
             .controlResponseStreamId(110 + index)
             .aeronDirectoryName(baseDirName);
 
@@ -339,11 +345,11 @@ public class StartFromTruncatedRecordingLogTest
                 .dirDeleteOnShutdown(false)
                 .dirDeleteOnStart(true),
             new Archive.Context()
-                .maxCatalogEntries(MAX_CATALOG_ENTRIES)
+                .catalogCapacity(CATALOG_CAPACITY)
                 .archiveDir(new File(baseDirName, "archive"))
                 .controlChannel(archiveCtx.controlRequestChannel())
                 .controlStreamId(archiveCtx.controlRequestStreamId())
-                .localControlChannel("aeron:ipc?term-length=64k")
+                .localControlChannel(ARCHIVE_CONTROL_RESPONSE_CHANNEL)
                 .localControlStreamId(archiveCtx.controlRequestStreamId())
                 .recordingEventsEnabled(false)
                 .threadingMode(ArchiveThreadingMode.SHARED)
@@ -351,13 +357,14 @@ public class StartFromTruncatedRecordingLogTest
                 .deleteArchiveOnStart(cleanStart),
             new ConsensusModule.Context()
                 .errorHandler(ClusterTests.errorHandler(index))
+                .terminationHook(terminateCount::incrementAndGet)
                 .clusterMemberId(index)
+                .snapshotCounter(mockSnapshotCounters[index])
                 .clusterMembers(CLUSTER_MEMBERS)
                 .clusterDir(new File(baseDirName, "consensus-module"))
                 .ingressChannel("aeron:udp?term-length=64k")
-                .logChannel(memberSpecificPort(LOG_CHANNEL, index))
+                .logChannel(LOG_CHANNEL)
                 .archiveContext(archiveCtx.clone())
-                .shouldTerminateWhenClosed(false)
                 .deleteDirOnStart(cleanStart));
 
         containers[index] = ClusteredServiceContainer.launch(
@@ -385,7 +392,7 @@ public class StartFromTruncatedRecordingLogTest
             new AeronCluster.Context()
                 .egressListener(egressMessageListener)
                 .ingressChannel("aeron:udp?term-length=64k")
-                .egressChannel("aeron:udp?term-length=64k|endpoint=localhost:9020")
+                .egressChannel("aeron:udp?term-length=64k|endpoint=localhost:0")
                 .ingressEndpoints("0=localhost:20110,1=localhost:20111,2=localhost:20112"));
     }
 
@@ -416,7 +423,14 @@ public class StartFromTruncatedRecordingLogTest
     {
         while (responseCount.get() < messageCount)
         {
-            Tests.yield();
+            Thread.yield();
+            if (Thread.currentThread().isInterrupted())
+            {
+                final String msg = "messageCount=" + messageCount + " responseCount=" + responseCount;
+                Tests.unexpectedInterruptStackTrace(msg);
+                fail("unexpected interrupt - " + msg);
+            }
+
             client.pollEgress();
         }
 
@@ -424,14 +438,18 @@ public class StartFromTruncatedRecordingLogTest
         {
             while (echoServices[i].messageCount() < messageCount)
             {
-                Tests.yield();
+                Thread.yield();
+                if (Thread.currentThread().isInterrupted())
+                {
+                    final String msg =
+                        "memberId=" + i +
+                        " messageCount=" + messageCount +
+                        " serviceMessageCount=" + echoServices[i].messageCount();
+                    Tests.unexpectedInterruptStackTrace(msg);
+                    fail("unexpected interrupt - " + msg);
+                }
             }
         }
-    }
-
-    private static String memberSpecificPort(final String channel, final int memberId)
-    {
-        return channel.substring(0, channel.length() - 1) + memberId;
     }
 
     private static String clusterMembersString()
@@ -488,13 +506,13 @@ public class StartFromTruncatedRecordingLogTest
 
         for (int i = 0; i < MEMBER_COUNT; i++)
         {
-            final ClusteredMediaDriver driver = clusteredMediaDrivers[i];
-            final Cluster.Role role = Cluster.Role.get(driver.consensusModule().context().clusterNodeRoleCounter());
-            final Counter electionStateCounter = driver.consensusModule().context().electionStateCounter();
+            final ConsensusModule.Context context = clusteredMediaDrivers[i].consensusModule().context();
+            final Cluster.Role role = Cluster.Role.get(context.clusterNodeRoleCounter());
+            final Counter electionStateCounter = context.electionStateCounter();
 
-            if (Cluster.Role.LEADER == role && ElectionState.CLOSED.code() == electionStateCounter.get())
+            if (Cluster.Role.LEADER == role && ElectionState.CLOSED == ElectionState.get(electionStateCounter))
             {
-                leaderMemberId = driver.consensusModule().context().clusterMemberId();
+                leaderMemberId = context.clusterMemberId();
             }
         }
 
@@ -503,13 +521,13 @@ public class StartFromTruncatedRecordingLogTest
 
     private void takeSnapshot(final int index)
     {
-        final ClusteredMediaDriver driver = clusteredMediaDrivers[index];
-        final CountersReader counters = driver.consensusModule().context().aeron().countersReader();
-        final int clusterId = driver.consensusModule().context().clusterId();
+        final ConsensusModule.Context context = clusteredMediaDrivers[index].consensusModule().context();
+        final CountersReader counters = context.aeron().countersReader();
+        final int clusterId = context.clusterId();
         final AtomicCounter controlToggle = ClusterControl.findControlToggle(counters, clusterId);
 
         assertNotNull(controlToggle);
-        awaitNeutralCounter(index);
+        awaitNeutralControlToggle(index);
         assertTrue(ClusterControl.ToggleState.SNAPSHOT.toggle(controlToggle));
     }
 
@@ -525,19 +543,42 @@ public class StartFromTruncatedRecordingLogTest
 
     private AtomicCounter getControlToggle(final int index)
     {
-        final ClusteredMediaDriver driver = clusteredMediaDrivers[index];
-        final int clusterId = driver.consensusModule().context().clusterId();
-        final CountersReader counters = driver.consensusModule().context().aeron().countersReader();
+        final ConsensusModule.Context context = clusteredMediaDrivers[index].consensusModule().context();
+        if (context.aeron().isClosed())
+        {
+            return null;
+        }
 
-        return ClusterControl.findControlToggle(counters, clusterId);
+        return ClusterControl.findControlToggle(context.aeron().countersReader(), context.clusterId());
     }
 
-    private void awaitNeutralCounter(final int index)
+    private void awaitNeutralControlToggle(final int index)
     {
-        final AtomicCounter controlToggle = getControlToggle(index);
-        while (ClusterControl.ToggleState.get(controlToggle) != ClusterControl.ToggleState.NEUTRAL)
+        while (true)
         {
+            final AtomicCounter controlToggle = getControlToggle(index);
+            assertNotNull(controlToggle);
+
+            if (ClusterControl.ToggleState.get(controlToggle) == ClusterControl.ToggleState.NEUTRAL)
+            {
+                break;
+            }
+
             Tests.yield();
+        }
+    }
+
+    private void awaitConsensusModulesActive()
+    {
+        for (int i = 0; i < MEMBER_COUNT; i++)
+        {
+            final ConsensusModule.Context context = clusteredMediaDrivers[i].consensusModule().context();
+            final Counter moduleStateCounter = context.moduleStateCounter();
+
+            while (ConsensusModule.State.ACTIVE != ConsensusModule.State.get(moduleStateCounter))
+            {
+                Tests.yield();
+            }
         }
     }
 
@@ -545,10 +586,7 @@ public class StartFromTruncatedRecordingLogTest
     {
         for (int i = 0; i < MEMBER_COUNT; i++)
         {
-            final ClusteredMediaDriver driver = clusteredMediaDrivers[i];
-            final Counter snapshotCounter = driver.consensusModule().context().snapshotCounter();
-
-            while (snapshotCounter.get() != count)
+            while (snapshotCounters[i].get() < count)
             {
                 Tests.sleep(1);
             }

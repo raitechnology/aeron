@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@
 #include "Subscription.h"
 #include "Context.h"
 #include "Counter.h"
-#include "util/Export.h"
 #include "ClientConductor.h"
 
 #include "aeronc.h"
@@ -58,7 +57,7 @@ using AsyncAddCounter = aeron_async_add_counter_t;
  * <p>
  * A client application requires only one Aeron object per Media Driver.
  */
-class CLIENT_EXPORT Aeron
+class Aeron
 {
 public:
     /**
@@ -234,7 +233,7 @@ public:
         }
         else
         {
-            return std::make_shared<Publication>(m_aeron, publication, m_countersReader);
+            return std::make_shared<Publication>(m_aeron, publication);
         }
     }
 
@@ -347,7 +346,7 @@ public:
         }
         else
         {
-            return std::make_shared<ExclusivePublication>(m_aeron, publication, m_countersReader);
+            return std::make_shared<ExclusivePublication>(m_aeron, publication);
         }
     }
 
@@ -458,8 +457,10 @@ public:
             m_aeron,
             channel.c_str(),
             streamId,
-            onAvailableImageCallback, availableClientd,
-            onUnavailableImageCallback, unavailableClientd) < 0)
+            onAvailableImageCallback,
+            availableClientd,
+            onUnavailableImageCallback,
+            unavailableClientd) < 0)
         {
             AERON_MAP_ERRNO_TO_SOURCED_EXCEPTION_AND_THROW;
         }
@@ -513,7 +514,7 @@ public:
         else
         {
             addSubscription->m_async = nullptr;
-            return std::make_shared<Subscription>(m_aeron, subscription, addSubscription, m_countersReader);
+            return std::make_shared<Subscription>(m_aeron, subscription, addSubscription);
         }
     }
 

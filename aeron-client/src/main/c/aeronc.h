@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ extern "C"
 #define AERON_CLIENT_ERROR_CLIENT_TIMEOUT (-1001)
 #define AERON_CLIENT_ERROR_CONDUCTOR_SERVICE_TIMEOUT (-1002)
 #define AERON_CLIENT_ERROR_BUFFER_FULL (-1003)
+#define AERON_CLIENT_MAX_LOCAL_ADDRESS_STR_LEN (64)
 
 typedef struct aeron_context_stct aeron_context_t;
 typedef struct aeron_stct aeron_t;
@@ -991,9 +992,7 @@ int64_t aeron_publication_offerv(
  * @return the new stream position otherwise a negative error value.
  */
 int64_t aeron_publication_try_claim(
-    aeron_publication_t *publication,
-    size_t length,
-    aeron_buffer_claim_t *buffer_claim);
+    aeron_publication_t *publication, size_t length, aeron_buffer_claim_t *buffer_claim);
 
 /**
  * Get the status of the media channel for this publication.
@@ -1156,6 +1155,20 @@ int32_t aeron_publication_stream_id(aeron_publication_t *publication);
  */
 int32_t aeron_publication_session_id(aeron_publication_t *publication);
 
+/**
+ * Get all of the local socket addresses for this publication. Typically only one representing the control address.
+ *
+ * @param subscription to query
+ * @param address_vec to hold the received addresses
+ * @param address_vec_len available length of the vector to hold the addresses
+ * @return number of addresses found or -1 if there is an error.
+ * @see aeron_subscription_local_sockaddrs
+ */
+int aeron_publication_local_sockaddrs(
+    aeron_publication_t *publication,
+    aeron_iovec_t *address_vec,
+    size_t address_vec_len);
+
 /*
  * Exclusive Publication functions
  */
@@ -1302,6 +1315,19 @@ bool aeron_exclusive_publication_is_closed(aeron_exclusive_publication_t *public
  * @return true if this publication has recently seen an active subscriber otherwise false.
  */
 bool aeron_exclusive_publication_is_connected(aeron_exclusive_publication_t *publication);
+
+/**
+ * Get all of the local socket addresses for this exclusive publication. Typically only one representing the control
+ * address.
+ *
+ * @see aeron_subscription_local_sockaddrs
+ * @param subscription to query
+ * @param address_vec to hold the received addresses
+ * @param address_vec_len available length of the vector to hold the addresses
+ * @return number of addresses found or -1 if there is an error.
+ */
+int aeron_exclusive_publication_local_sockaddrs(
+    aeron_exclusive_publication_t *publication, aeron_iovec_t *address_vec, size_t address_vec_len);
 
 /**
  * Subscription functions
@@ -1574,6 +1600,12 @@ int aeron_subscription_image_retain(aeron_subscription_t *subscription, aeron_im
  */
 int aeron_subscription_image_release(aeron_subscription_t *subscription, aeron_image_t *image);
 
+/**
+ * Is the subscription closed.
+ *
+ * @param subscription to be checked.
+ * @return true if it has been closed otherwise false.
+ */
 bool aeron_subscription_is_closed(aeron_subscription_t *subscription);
 
 /**
@@ -1631,6 +1663,55 @@ int aeron_subscription_async_destination_poll(aeron_async_destination_t *async);
  */
 int aeron_subscription_close(
     aeron_subscription_t *subscription, aeron_notification_t on_close_complete, void *on_close_complete_clientd);
+
+/**
+ * Get all of the local socket addresses for this subscription. Multiple addresses can occur if this is a
+ * multi-destination subscription. Addresses will a string representation in numeric form. IPv6 addresses will be
+ * surrounded by '[' and ']' so that the ':' that separate the parts are distinguishable from the port delimiter.
+ * E.g. [fe80::7552:c06e:6bf4:4160]:12345. As of writing the maximum length for a formatted address is 54 bytes
+ * including the NULL terminator. AERON_CLIENT_MAX_LOCAL_ADDRESS_STR_LEN is defined to provide enough space to fit the
+ * returned string. Returned strings will be NULL terminated. If the buffer to hold the address can not hold enough
+ * of the message it will be truncated and the last character will be null.
+ *
+ * If the address_vec_len is less the total number of addresses available then the first addresses found up to that
+ * length will be placed into the address_vec. However the function will return the total number of addresses available
+ * so if if that is larger than the input array then the client code may wish to re-query with a larger array to get
+ * them all.
+ *
+ * @param subscription to query
+ * @param address_vec to hold the received addresses
+ * @param address_vec_len available length of the vector to hold the addresses
+ * @return number of addresses found or -1 if there is an error.
+ */
+int aeron_subscription_local_sockaddrs(
+    aeron_subscription_t *subscription, aeron_iovec_t *address_vec, size_t address_vec_len);
+
+/**
+ * Retrieves the first local socket address for this subscription. If this is not MDS then it will be the one
+ * representing endpoint for this subscription.
+ *
+ * @see aeron_subscription_local_sockaddrs
+ * @param subscription to query
+ * @param address for the received address
+ * @param address_len available length for the copied address.
+ * @return -1 on error, 0 if address not found, 1 if address is found.
+ */
+int aeron_subscription_resolved_endpoint(aeron_subscription_t *subscription, const char *address, size_t address_len);
+
+/**
+ * Retrieves the channel URI for this subscription with any wildcard ports filled in. If the channel is not UDP or
+ * does not have a wildcard port (`0`), then it will return the original URI.
+ *
+ * @param subscription to query
+ * @param uri buffer to hold the resolved uri
+ * @param uri_len length of the buffer
+ * @return -1 on failure or the number of bytes written to the buffer (excluding the NULL terminator).  Writing is done
+ * on a per key basis, so if the buffer was truncated before writing completed, it will only include the byte count up
+ * to the key that overflowed. However, the invariant that if the number returned >= uri_len, then output will have been
+ * truncated.
+ */
+int aeron_subscription_try_resolve_channel_endpoint_port(
+    aeron_subscription_t *subscription, char *uri, size_t uri_len);
 
 /**
  * Image Functions
@@ -2178,7 +2259,7 @@ int aeron_default_path(char *path, size_t path_length);
 
 /**
  * Gets the registration id for addition of the counter. Note that using this after a call to poll the succeeds or
- * errors is undefined behaviour.  As the async_add_counter_t may have been freed.
+ * errors is undefined behaviour. As the async_add_counter_t may have been freed.
  *
  * @param add_counter used to check for completion.
  * @return registration id for the counter.
@@ -2232,6 +2313,125 @@ int64_t aeron_async_destination_get_registration_id(aeron_async_destination_t *a
  * @return
  */
 int aeron_context_request_driver_termination(const char *directory, const uint8_t *token_buffer, size_t token_length);
+
+typedef struct aeron_cnc_stct aeron_cnc_t;
+
+#pragma pack(push)
+#pragma pack(4)
+typedef struct aeron_cnc_constants_stct
+{
+    int32_t cnc_version;
+    int32_t to_driver_buffer_length;
+    int32_t to_clients_buffer_length;
+    int32_t counter_metadata_buffer_length;
+    int32_t counter_values_buffer_length;
+    int32_t error_log_buffer_length;
+    int64_t client_liveness_timeout;
+    int64_t start_timestamp;
+    int64_t pid;
+}
+aeron_cnc_constants_t;
+#pragma pack(pop)
+
+/**
+ * Initialise an aeron_cnc, which gives user level access to the command and control file used to communicate
+ * with the media driver. Will wait until the media driver has loaded and the cnc file is created, up to timeout_ms.
+ * Use a value of 0 for a non-blocking initialisation.
+ *
+ * @param aeron_cnc to hold the loaded aeron_cnc
+ * @param base_path media driver's base path
+ * @param timeout_ms Number of milliseconds to wait before timing out.
+ * @return 0 on success, -1 on failure.
+ */
+int aeron_cnc_init(aeron_cnc_t **aeron_cnc, const char *base_path, int64_t timeout_ms);
+
+/**
+ * Fetch the sets of constant values associated with this command and control file.
+ *
+ * @param aeron_cnc to query
+ * @param constants user supplied structure to hold return values.
+ * @return 0 on success, -1 on failure.
+ */
+int aeron_cnc_constants(aeron_cnc_t *aeron_cnc, aeron_cnc_constants_t *constants);
+
+/**
+ * Get the current file name of the cnc file.
+ *
+ * @param aeron_cnc to query
+ * @return name of the cnc file
+ */
+const char *aeron_cnc_filename(aeron_cnc_t *aeron_cnc);
+
+/**
+ * Gets the timestamp of the last heartbeat sent to the media driver from any client.
+ *
+ * @param aeron_cnc to query
+ * @return last heartbeat timestamp in ms.
+ */
+int64_t aeron_cnc_to_driver_heartbeat(aeron_cnc_t *aeron_cnc);
+
+typedef void (*aeron_error_log_reader_func_t)(
+    int32_t observation_count,
+    int64_t first_observation_timestamp,
+    int64_t last_observation_timestamp,
+    const char *error,
+    size_t error_length,
+    void *clientd);
+
+/**
+ * Reads the current error log for this driver.
+ *
+ * @param aeron_cnc to query
+ * @param callback called for every distinct error observation
+ * @param clientd client data to be passed to the callback
+ * @param since_timestamp only return errors after this timestamp (0 returns all)
+ * @return the number of distinct errors seen
+ */
+size_t aeron_cnc_error_log_read(
+    aeron_cnc_t *aeron_cnc,
+    aeron_error_log_reader_func_t callback,
+    void *clientd,
+    int64_t since_timestamp);
+
+/**
+ * Gets a counters reader for this command and control file.  This does not need to be closed manually, resources
+ * are tied to the instance of aeron_cnc.
+ *
+ * @param aeron_cnc to query
+ * @return pointer to a counters reader.
+ */
+aeron_counters_reader_t *aeron_cnc_counters_reader(aeron_cnc_t *aeron_cnc);
+
+typedef void (*aeron_loss_reporter_read_entry_func_t)(
+    void *clientd,
+    int64_t observation_count,
+    int64_t total_bytes_lost,
+    int64_t first_observation_timestamp,
+    int64_t last_observation_timestamp,
+    int32_t session_id,
+    int32_t stream_id,
+    const char *channel,
+    int32_t channel_length,
+    const char *source,
+    int32_t source_length);
+
+/**
+ * Read all of the data loss observations from the report in the same media driver instances as the cnc file.
+ *
+ * @param aeron_cnc to query
+ * @param entry_func callback for each observation found
+ * @param clientd client data to be passed to the callback.
+ * @return -1 on failure, number of observations on success (could be 0).
+ */
+int aeron_cnc_loss_reporter_read(
+    aeron_cnc_t *aeron_cnc, aeron_loss_reporter_read_entry_func_t entry_func, void *clientd);
+
+/**
+ * Closes the instance of the aeron cnc and frees its resources.
+ *
+ * @param aeron_cnc to close
+ */
+void aeron_cnc_close(aeron_cnc_t *aeron_cnc);
 
 #ifdef __cplusplus
 }

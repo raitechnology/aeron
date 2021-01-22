@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -135,10 +135,9 @@ public final class ArchiveEventLogger
         }
     }
 
-    public void logCatalogResize(
-        final int maxEntries, final long catalogLength, final int newMaxEntries, final long newCatalogLength)
+    public void logCatalogResize(final long catalogLength, final long newCatalogLength)
     {
-        final int length = SIZE_OF_LONG * 2 + 2 * SIZE_OF_INT;
+        final int length = SIZE_OF_LONG * 2;
         final int captureLength = captureLength(length);
         final int encodedLength = encodedLength(captureLength);
         final ManyToOneRingBuffer ringBuffer = this.ringBuffer;
@@ -153,9 +152,7 @@ public final class ArchiveEventLogger
                     index,
                     captureLength,
                     length,
-                    maxEntries,
                     catalogLength,
-                    newMaxEntries,
                     newCatalogLength);
             }
             finally

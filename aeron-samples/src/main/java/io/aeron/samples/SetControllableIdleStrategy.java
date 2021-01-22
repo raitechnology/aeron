@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,11 +22,17 @@ import org.agrona.concurrent.status.StatusIndicator;
 
 /**
  * Allows a {@link org.agrona.concurrent.ControllableIdleStrategy} to be set via the command line.
+ * <p>
  * The first command line arg should be an integer value representing one of constants in
  * {@link org.agrona.concurrent.ControllableIdleStrategy}.
  */
 public class SetControllableIdleStrategy
 {
+    /**
+     * Main method for launching the process.
+     *
+     * @param args passed to the process.
+     */
     public static void main(final String[] args)
     {
         if (args.length != 1)

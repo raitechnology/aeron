@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ class ControlRequestDecoders
     final ExtendRecordingRequest2Decoder extendRecordingRequest2 = new ExtendRecordingRequest2Decoder();
     final RecordingPositionRequestDecoder recordingPositionRequest = new RecordingPositionRequestDecoder();
     final TruncateRecordingRequestDecoder truncateRecordingRequest = new TruncateRecordingRequestDecoder();
+    final PurgeRecordingRequestDecoder purgeRecordingRequest = new PurgeRecordingRequestDecoder();
     final StopRecordingSubscriptionRequestDecoder stopRecordingSubscriptionRequest =
         new StopRecordingSubscriptionRequestDecoder();
     final StopPositionRequestDecoder stopPositionRequest = new StopPositionRequestDecoder();

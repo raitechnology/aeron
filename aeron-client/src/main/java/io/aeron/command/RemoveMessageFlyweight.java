@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,10 @@
  */
 package io.aeron.command;
 
-import io.aeron.ErrorCode;
 import io.aeron.exceptions.ControlProtocolException;
+import org.agrona.MutableDirectBuffer;
 
+import static io.aeron.ErrorCode.MALFORMED_COMMAND;
 import static org.agrona.BitUtil.SIZE_OF_LONG;
 
 /**
@@ -41,6 +42,20 @@ public class RemoveMessageFlyweight extends CorrelatedMessageFlyweight
 {
     private static final int REGISTRATION_ID_OFFSET = CORRELATION_ID_FIELD_OFFSET + SIZE_OF_LONG;
     private static final int MINIMUM_LENGTH = REGISTRATION_ID_OFFSET + SIZE_OF_LONG;
+
+    /**
+     * Wrap the buffer at a given offset for updates.
+     *
+     * @param buffer to wrap.
+     * @param offset at which the message begins.
+     * @return this for a fluent API.
+     */
+    public RemoveMessageFlyweight wrap(final MutableDirectBuffer buffer, final int offset)
+    {
+        super.wrap(buffer, offset);
+
+        return this;
+    }
 
     /**
      * Get the registration id field.
@@ -86,7 +101,7 @@ public class RemoveMessageFlyweight extends CorrelatedMessageFlyweight
         if (length < MINIMUM_LENGTH)
         {
             throw new ControlProtocolException(
-                ErrorCode.MALFORMED_COMMAND, "command=" + msgTypeId + " too short: length=" + length);
+                MALFORMED_COMMAND, "command=" + msgTypeId + " too short: length=" + length);
         }
     }
 }

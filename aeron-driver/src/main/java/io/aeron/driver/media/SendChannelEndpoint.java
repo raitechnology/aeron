@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ public class SendChannelEndpoint extends UdpChannelTransport
     static final long DESTINATION_TIMEOUT = TimeUnit.SECONDS.toNanos(5);
 
     private int refCount = 0;
-    protected long timeOfLastResolutionNs;
+    private long timeOfLastResolutionNs;
     private final Long2ObjectHashMap<NetworkPublication> publicationBySessionAndStreamId = new Long2ObjectHashMap<>();
     private final MultiSndDestination multiSndDestination;
     private final AtomicCounter statusMessagesReceived;
@@ -240,10 +240,7 @@ public class SendChannelEndpoint extends UdpChannelTransport
         }
         else if (udpChannel.hasExplicitEndpoint() && !udpChannel.isMulticast())
         {
-            final long timeOfLastStatusMessageNs = timeOfLastStatusMessageNs();
-
-            if (((timeOfLastStatusMessageNs + DESTINATION_TIMEOUT) - nowNs) < 0 &&
-                ((timeOfLastResolutionNs + DESTINATION_TIMEOUT) - nowNs) < 0)
+            if (statusMessageTimeout(nowNs) && ((timeOfLastResolutionNs + DESTINATION_TIMEOUT) - nowNs) < 0)
             {
                 final String endpoint = udpChannel.channelUri().get(CommonContext.ENDPOINT_PARAM_NAME);
                 conductorProxy.reResolveEndpoint(endpoint, this, udpChannel.remoteData());
@@ -352,15 +349,16 @@ public class SendChannelEndpoint extends UdpChannelTransport
         }
     }
 
-    private long timeOfLastStatusMessageNs()
+    private boolean statusMessageTimeout(final long nowNs)
     {
-        long timeNs = 0;
-
         for (final NetworkPublication publication : publicationBySessionAndStreamId.values())
         {
-            timeNs = Math.max(timeNs, publication.timeOfLastStatusMessageNs());
+            if (((publication.timeOfLastStatusMessageNs() + DESTINATION_TIMEOUT) - nowNs) >= 0)
+            {
+                return false;
+            }
         }
 
-        return 0;
+        return true;
     }
 }

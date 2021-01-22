@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,22 +25,34 @@ plugins {
     id 'idea'
     id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
     id 'biz.aQute.bnd.builder' version '5.1.2' apply false
-    id "com.github.ben-manes.versions" version "0.34.0"
+    id "com.github.ben-manes.versions" version "0.36.0"
 }
 
 defaultTasks 'clean', 'build'
 
+static def getBuildJavaVersion() {
+    def buildJavaVersion = System.getenv('BUILD_JAVA_VERSION') ?: JavaVersion.current().getMajorVersion()
+    if (buildJavaVersion.indexOf('.') > 0) {
+        buildJavaVersion = buildJavaVersion.substring(0, buildJavaVersion.indexOf('.'))
+    }
+    if (buildJavaVersion.indexOf('-') > 0) {
+        buildJavaVersion = buildJavaVersion.substring(0, buildJavaVersion.indexOf('-'))
+    }
+    Integer.parseInt(buildJavaVersion)
+}
+int buildJavaVersion = getBuildJavaVersion()
+
 def aeronGroup = 'io.aeron'
 def aeronVersion = file('version.txt').text.trim()
 
-def agronaVersion = '1.8.0'
-def agronaVersionRange = '[1.8,1.9[' // allow any patch release of 1.8.x
-def sbeVersion = '1.20.3'
-def checkstyleVersion = '8.36.2'
+def agronaVersion = '1.9.0'
+def agronaVersionRange = '[1.9,1.10[' // allow any patch release of 1.9.x
+def sbeVersion = '1.21.0'
+def checkstyleVersion = '8.39'
 def hamcrestVersion = '2.2'
 def junitVersion = '5.7.0'
-def mockitoVersion = '3.6.0'
-def byteBuddyVersion = '1.10.18'
+def mockitoVersion = '3.7.7'
+def byteBuddyVersion = '1.10.19'
 def hdrHistogramVersion = '2.1.12'
 
 ext {
@@ -153,6 +165,12 @@ subprojects {
         testRuntimeOnly "net.bytebuddy:byte-buddy:${byteBuddyVersion}"
     }
 
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(buildJavaVersion)
+        }
+    }
+
     group = aeronGroup
     version = aeronVersion
 
@@ -170,18 +188,21 @@ subprojects {
     }
 
     tasks.withType(JavaCompile) {
-        if (JavaVersion.current().isJava9Compatible()) {
+        if (buildJavaVersion >= 9) {
             options.compilerArgs.addAll(['--add-exports', 'java.base/java.lang.reflect=ALL-UNNAMED'])
             options.compilerArgs.addAll(['--add-exports', 'java.base/java.net=ALL-UNNAMED'])
             options.compilerArgs.addAll(['--add-exports', 'java.base/sun.nio.ch=ALL-UNNAMED'])
             options.compilerArgs.addAll(['--add-exports', 'jdk.unsupported/sun.misc=ALL-UNNAMED'])
+            // -- Workaround for https://github.com/gradle/gradle/issues/15538
+            options.forkOptions.jvmArgs.addAll( ['--add-opens', 'jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED'] )
+            // --
         }
         options.encoding = 'UTF-8'
         options.deprecation = true
     }
 
     tasks.withType(Test) {
-        if (JavaVersion.current().isJava9Compatible()) {
+        if (buildJavaVersion >= 9) {
             jvmArgs('--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED')
             jvmArgs('--add-opens', 'java.base/java.net=ALL-UNNAMED')
             jvmArgs('--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED')
@@ -189,7 +210,7 @@ subprojects {
         }
 
         useJUnitPlatform {
-            excludeTags 'slow'
+            excludeTags 'slow', 'topology'
         }
 
         testLogging {
@@ -224,12 +245,14 @@ subprojects {
         options.docEncoding = 'UTF-8'
         options.charSet = 'UTF-8'
         options.links("https://www.javadoc.io/doc/org.agrona/agrona/${agronaVersion}/")
-        if (JavaVersion.current().isJava11Compatible()) {
-            options.links("https://docs.oracle.com/en/java/javase/${JavaVersion.current().majorVersion}/docs/api/")
+        if (buildJavaVersion >= 16) { // early access JavaDoc location is different
+            options.links("https://download.java.net/java/early_access/jdk${buildJavaVersion}/docs/api/")
+        } else if (buildJavaVersion >= 11) {
+            options.links("https://docs.oracle.com/en/java/javase/${buildJavaVersion}/docs/api/")
         } else {
-            options.links("https://docs.oracle.com/javase/${JavaVersion.current().majorVersion}/docs/api/")
+            options.links("https://docs.oracle.com/javase/${buildJavaVersion}/docs/api/")
         }
-        if (JavaVersion.current().isJava10Compatible()) {
+        if (buildJavaVersion >= 10) {
             options.addBooleanOption 'html5', true
         }
     }
@@ -294,7 +317,7 @@ project(':aeron-client') {
 
         repositories {
             maven {
-                url = !isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl
+                url(!isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl)
                 credentials {
                     username = ossrhUsername
                     password = ossrhPassword
@@ -361,7 +384,7 @@ project(':aeron-driver') {
 
         repositories {
             maven {
-                url = !isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl
+                url(!isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl)
                 credentials {
                     username = ossrhUsername
                     password = ossrhPassword
@@ -420,7 +443,7 @@ project(':aeron-archive') {
         args = [codecsFile, markCodecsFile]
     }
 
-    def generatedCppDir = file(System.properties['codec.target.dir'] ?: "${rootDir}/cppbuild/Release/generated")
+    def generatedCppDir = file(System.getProperty('codec.target.dir') ?: "${rootDir}/cppbuild/Release/generated")
     task generateCppCodecs(type: JavaExec) {
         main = 'uk.co.real_logic.sbe.SbeTool'
         classpath = configurations.codecGeneration
@@ -479,7 +502,7 @@ project(':aeron-archive') {
 
         repositories {
             maven {
-                url = !isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl
+                url(!isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl)
                 credentials {
                     username = ossrhUsername
                     password = ossrhPassword
@@ -586,7 +609,7 @@ project(':aeron-cluster') {
 
         repositories {
             maven {
-                url = !isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl
+                url(!isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl)
                 credentials {
                     username = ossrhUsername
                     password = ossrhPassword
@@ -669,7 +692,7 @@ project(':aeron-agent') {
         }
         repositories {
             maven {
-                url = !isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl
+                url(!isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl)
                 credentials {
                     username = ossrhUsername
                     password = ossrhPassword
@@ -707,7 +730,7 @@ project(':aeron-samples') {
 
         repositories {
             maven {
-                url = !isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl
+                url(!isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl)
                 credentials {
                     username = ossrhUsername
                     password = ossrhPassword
@@ -747,8 +770,11 @@ project(':aeron-system-tests') {
     dependencies {
         testImplementation project(':aeron-archive')
         testImplementation project(':aeron-test-support')
+        testImplementation project(':aeron-samples')
         testImplementation project(path: ':aeron-client', configuration: 'tests')
         testImplementation project(path: ':aeron-archive', configuration: 'tests')
+        testImplementation project(path: ':aeron-cluster')
+        testImplementation files("${System.properties['java.home']}/../lib/tools.jar")
     }
 
     test {
@@ -762,11 +788,13 @@ project(':aeron-system-tests') {
 project(':aeron-test-support') {
     dependencies {
         api project(':aeron-client')
+        api project(':aeron-cluster')
         api "org.junit.jupiter:junit-jupiter-api:${junitVersion}"
         implementation ("org.mockito:mockito-junit-jupiter:${mockitoVersion}") {
             exclude group: 'org.junit.jupiter'
             exclude group: 'net.bytebuddy'
         }
+        implementation "org.hamcrest:hamcrest:${hamcrestVersion}"
     }
 
     javadoc.enabled = false
@@ -838,7 +866,7 @@ project(':aeron-all') {
         }
         repositories {
             maven {
-                url = !isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl
+                url(!isReleaseVersion ? snapshotsRepoUrl : releasesRepoUrl)
                 credentials {
                     username = ossrhUsername
                     password = ossrhPassword
@@ -862,6 +890,7 @@ task copyTestLogs(type: Copy) {
     from '.'
     include '**/build/test-output/**'
     include '**/*.log'
+    include '**/*.tlog'
     include 'LICENSE'
     exclude 'build'
     into 'build/test_logs'
@@ -870,6 +899,6 @@ task copyTestLogs(type: Copy) {
 }
 
 wrapper {
-    gradleVersion = '6.6.1'
+    gradleVersion = '6.7.1'
     distributionType = 'ALL'
 }

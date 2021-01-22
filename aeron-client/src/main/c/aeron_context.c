@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,14 +21,9 @@
 #include <inttypes.h>
 
 #include "concurrent/aeron_mpsc_rb.h"
-#include "util/aeron_platform.h"
 #include "util/aeron_fileutil.h"
 #include "aeron_cnc_file_descriptor.h"
 #include "command/aeron_control_protocol.h"
-
-#if defined(AERON_COMPILER_MSVC)
-#include <io.h>
-#endif
 
 #include "aeron_alloc.h"
 #include "aeron_context.h"
@@ -40,12 +35,6 @@
 #define AERON_CONTEXT_KEEPALIVE_INTERVAL_NS_DEFAULT (500 * 1000 * 1000LL)
 #define AERON_CONTEXT_RESOURCE_LINGER_DURATION_NS_DEFAULT (3 * 1000 * 1000 * 1000LL)
 #define AERON_CONTEXT_PRE_TOUCH_MAPPED_MEMORY_DEFAULT (false)
-
-#ifdef _MSC_VER
-#define AERON_FILE_SEP '\\'
-#else
-#define AERON_FILE_SEP '/'
-#endif
 
 void aeron_default_error_handler(void *clientd, int errcode, const char *message)
 {
@@ -150,10 +139,7 @@ int aeron_context_init(aeron_context_t **context)
         getenv(AERON_CLIENT_PRE_TOUCH_MAPPED_MEMORY_ENV_VAR), AERON_CONTEXT_PRE_TOUCH_MAPPED_MEMORY_DEFAULT);
 
     if ((_context->idle_strategy_func = aeron_idle_strategy_load(
-        "sleeping",
-        &_context->idle_strategy_state,
-        NULL,
-        "1ms")) == NULL)
+        "sleeping", &_context->idle_strategy_state, NULL,"1ms")) == NULL)
     {
         return -1;
     }
@@ -187,7 +173,7 @@ do \
         return (r); \
     } \
 } \
-while (false)
+while (false) \
 
 int aeron_context_set_dir(aeron_context_t *context, const char *value)
 {
@@ -417,8 +403,11 @@ int aeron_context_request_driver_termination(const char *directory, const uint8_
     }
 
     char filename[AERON_MAX_PATH];
-
-    snprintf(filename, sizeof(filename) - 1, "%s%c%s", directory, AERON_FILE_SEP, AERON_CNC_FILE);
+    if (aeron_cnc_resolve_filename(directory, filename, sizeof(filename)) < 0)
+    {
+        aeron_set_err_from_last_err_code("Unable to get cnc filename");
+        return -1;
+    }
 
     int64_t file_length_result = aeron_file_length(filename);
     if (file_length_result < 0)
@@ -482,21 +471,22 @@ int aeron_context_request_driver_termination(const char *directory, const uint8_
                 goto cleanup;
             }
 
-            char buffer[sizeof(aeron_terminate_driver_command_t) + AERON_MAX_PATH];
-            aeron_terminate_driver_command_t *command = (aeron_terminate_driver_command_t *)buffer;
+            const size_t command_length = sizeof(aeron_terminate_driver_command_t) + token_length;
+            const int32_t offset = aeron_mpsc_rb_try_claim(&rb, AERON_COMMAND_TERMINATE_DRIVER, command_length);
+            if (offset < 0)
+            {
+                aeron_set_err(AERON_CLIENT_ERROR_BUFFER_FULL, "Unable to write to driver ring buffer");
+                result = -1;
+            }
+
+            aeron_terminate_driver_command_t *command = (aeron_terminate_driver_command_t *)(rb.buffer + offset);
 
             command->correlated.client_id = aeron_mpsc_rb_next_correlation_id(&rb);
             command->correlated.correlation_id = aeron_mpsc_rb_next_correlation_id(&rb);
             command->token_length = (int32_t)token_length;
             memcpy((void *)(command + 1), token_buffer, token_length);
 
-            size_t command_length = sizeof(aeron_terminate_driver_command_t) + token_length;
-
-            if (AERON_RB_SUCCESS != aeron_mpsc_rb_write(&rb, AERON_COMMAND_TERMINATE_DRIVER, command, command_length))
-            {
-                aeron_set_err(AERON_CLIENT_ERROR_BUFFER_FULL, "Unable to write to driver ring buffer");
-                result = -1;
-            }
+            aeron_mpsc_rb_commit(&rb, offset);
 
 cleanup:
             aeron_unmap(&cnc_mmap);

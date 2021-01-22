@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -189,7 +189,7 @@ public class LossReport
          */
         public void recordObservation(final long bytesLost, final long timestampMs)
         {
-            buffer.putLong(offset + LAST_OBSERVATION_OFFSET, timestampMs);
+            buffer.putLongOrdered(offset + LAST_OBSERVATION_OFFSET, timestampMs);
             buffer.getAndAddLong(offset + TOTAL_BYTES_LOST_OFFSET, bytesLost);
             buffer.getAndAddLong(offset + OBSERVATION_COUNT_OFFSET, 1);
         }

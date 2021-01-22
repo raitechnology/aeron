@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 Real Logic Limited.
+ * Copyright 2014-2021 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -241,7 +241,7 @@ public:
      *
      * @return path of the CnC file
      */
-    inline std::string cncFileName()
+    inline std::string cncFileName() const
     {
         const std::string dir = std::string(aeron_context_get_dir(m_context));
         return dir + std::string(1, AERON_FILE_SEP) + CncFileDescriptor::CNC_FILE;
@@ -555,14 +555,20 @@ private:
 
     static void errorHandlerCallback(void *clientd, int errcode, const char *message)
     {
-        const SourcedException exception = mapErrnoToAeronException(errcode, message, SOURCEINFO);
-        exception_handler_t &handler = *reinterpret_cast<exception_handler_t *>(clientd);
-        handler(exception);
+        try
+        {
+            AERON_MAP_TO_SOURCED_EXCEPTION_AND_THROW(errcode, message);
+        }
+        catch (SourcedException &exception)
+        {
+            exception_handler_t &handler = *reinterpret_cast<exception_handler_t *>(clientd);
+            handler(exception);
+        }
     }
 
     static void newPublicationHandlerCallback(
         void *clientd,
-        aeron_async_add_publication_t *async,
+        aeron_async_add_publication_t * /* async */,
         const char *channel,
         std::int32_t stream_id,
         std::int32_t session_id,
@@ -574,7 +580,7 @@ private:
 
     static void newSubscriptionHandlerCallback(
         void *clientd,
-        aeron_async_add_subscription_t *async,
+        aeron_async_add_subscription_t * /* async */,
         const char *channel,
         std::int32_t stream_id,
         std::int64_t correlation_id)
