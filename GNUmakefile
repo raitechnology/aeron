@@ -180,7 +180,7 @@ client_uri_files := aeron_uri
 
 all_dirs += $(objd)/$(client_uri_dir) $(dependd)/$(client_uri_dir)
 
-aeron_version_defines = -DAERON_VERSION_MAJOR=$(major_num) -DAERON_VERSION_MINOR=$(minor_num) -DAERON_VERSION_PATCH=$(patch_num) -DAERON_VERSION_TXT=\"$(version)\"
+aeron_version_defines = -DAERON_VERSION_MAJOR=$(major_num) -DAERON_VERSION_MINOR=$(minor_num) -DAERON_VERSION_PATCH=$(patch_num) -DAERON_VERSION_TXT=\"$(ver_build)\"
 
 client_dir   := aeron-client/src/main/c
 client_files := \
@@ -380,7 +380,8 @@ all_depends += $(aeronmd_deps)
 samples_dir   := aeron-samples/src/main/c
 samples_files := \
   basic_publisher basic_subscriber cping cpong rate_subscriber \
-  sample_util streaming_exclusive_publisher streaming_publisher
+  sample_util streaming_exclusive_publisher streaming_publisher \
+  aeron_stat
 
 all_dirs += $(objd)/$(samples_dir) $(dependd)/$(samples_dir)
 
@@ -418,9 +419,18 @@ streaming_publisher_objs = $(objd)/$(samples_dir)/streaming_publisher.o \
                            $(objd)/$(samples_dir)/sample_util.o
 $(bind)/streaming_publisher: $(streaming_publisher_objs) $(libd)/libaeron.so
 
+aeron_stat_lnk  = -laeron
+aeron_stat_objs = $(objd)/$(samples_dir)/aeron_stat.o
+$(bind)/aeron_stat: $(aeron_stat_objs) $(libd)/libaeron.so
+
+loss_stat_lnk  = -laeron
+loss_stat_objs = $(objd)/$(samples_dir)/loss_stat.o
+$(bind)/loss_stat: $(loss_stat_objs) $(libd)/libaeron.so
+
 all_exes    += $(bind)/basic_publisher $(bind)/basic_subscriber $(bind)/cping
 all_exes    += $(bind)/cpong $(bind)/rate_subscriber
 all_exes    += $(bind)/streaming_exclusive_publisher $(bind)/streaming_publisher
+all_exes    += $(bind)/aeron_stat $(bind)/loss_stat
 all_depends += $(addprefix $(dependd)/$(samples_dir)/, $(addsuffix .d, $(notdir $(samples_files))))
 
 samplescpp_dir = aeron-samples/src/main/cpp
