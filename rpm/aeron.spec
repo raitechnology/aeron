@@ -12,6 +12,7 @@ BuildRequires:  gcc-c++
 BuildRequires:  chrpath
 BuildRequires:  libbsd-devel
 BuildRequires:  hdrhist
+BuildRequires:  git-core
 Requires:       zlib
 Requires:       libbsd
 Requires:       hdrhist
